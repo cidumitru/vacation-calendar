@@ -3,6 +3,7 @@ import { HEAT_CLASS, heatLevel } from '@/components/heat-scale';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { DayCell, DayKind, MonthModel, YearModel } from '@/lib/calendar';
+import { fmt, yearOf } from '@/lib/dates';
 import type { CalendarView } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -193,8 +194,16 @@ function tileDotClass(c: DayCell): string | null {
   return null;
 }
 
+/** "9 days off for 3 days of leave, Wed 2 Dec – Fri 4 Dec": the best block through a shaded day. */
+function gainText(c: DayCell): string {
+  if (!c.best || heatLevel(c.value) === 0) return '';
+  const { off, leave, from, to } = c.best;
+  const y = yearOf(c.key);
+  return `${off} days off for ${leave} ${leave === 1 ? 'day' : 'days'} of leave${leave > 1 ? `, ${fmt(from, y)} – ${fmt(to, y)}` : ''}`;
+}
+
 function HeatDay({ cell, onTapDay }: DayProps) {
-  const gain = cell.kind !== 'trip' && cell.value >= 2 ? `${cell.value} days off for 1 day of leave` : '';
+  const gain = cell.kind !== 'trip' ? gainText(cell) : '';
   const tip = cell.holiday || gain;
   const dot = tileDotClass(cell);
   const joinLeft = !!JOINS[cell.kind] && cell.joinLeft;

@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { RO_2026 } from '../__fixtures__/nager';
-import { buildContext, buildYear, count, draftRange, isFree, valueOf } from '../calendar';
+import { bestBlock, buildContext, buildYear, count, draftRange, freeFn, isFree, valueOf } from '../calendar';
 import { EMPTY_LOOKUP, toHolidayMap, type HolidayLookup } from '../holidays';
 import { SEED_TRIPS } from '../storage';
 import type { Settings, Trip } from '../types';
 
 const RO: Settings = { holidays: true, country: 'RO', region: null, weekStart: 'Monday', allowance: 25, view: 'calendar' };
 const ro2026 = toHolidayMap(RO_2026, null, 2026);
-// 2027: only New Year’s Day matters for the cross-year test below.
-const ro2027 = { '2027-01-01': 'New Year’s Day' };
+// 2027: the January holidays, for the cross-year and block tests below.
+const ro2027 = {
+  '2027-01-01': 'New Year’s Day',
+  '2027-01-02': 'Day after New Year’s Day',
+  '2027-01-06': 'Epiphany',
+  '2027-01-07': 'Saint John the Baptist',
+  '2027-01-24': 'Unification Day',
+};
 const lookup: HolidayLookup = (y) => (y === 2026 ? ro2026 : y === 2027 ? ro2027 : {});
 const ctxOf = (trips: Trip[], from = '', to = '', s: Settings = RO) => buildContext(trips, from, to, s, lookup);
 
@@ -57,35 +63,64 @@ describe('Counting days off', () => {
 });
 
 describe('Value of a day (heat map)', () => {
-  it('counts the days off in a row one day of leave buys', () => {
-    expect(valueOf('2026-03-04', RO, lookup)).toBe(1); // a lone Wednesday
+  const block = (k: string) => bestBlock(k, freeFn(RO, lookup));
+
+  it('counts the days off one day of leave buys where a single day is the best block', () => {
     expect(valueOf('2026-03-02', RO, lookup)).toBe(3); // Monday: Sat, Sun, Mon
     expect(valueOf('2026-03-06', RO, lookup)).toBe(3); // Friday: Fri, Sat, Sun
     expect(valueOf('2026-04-30', RO, lookup)).toBe(4); // Thu before Labour Day (Fri 1 May): Thu–Sun
     expect(valueOf('2026-05-04', RO, lookup)).toBe(4); // Mon after it: Fri–Mon
     expect(valueOf('2026-01-05', RO, lookup)).toBe(7); // bridges New Year (Thu, Fri) and Epiphany (Tue, Wed)
+    expect(block('2026-01-05')).toEqual({ off: 7, leave: 1, from: '2026-01-05', to: '2026-01-05' });
+  });
+
+  it('gives a plain midweek day no more than a full week of leave would', () => {
+    // Wed 4 Mar: alone 1 for 1; Mon–Fri buys 9 (two weekends) for 5
+    expect(valueOf('2026-03-04', RO, lookup)).toBeCloseTo(1.8);
+    expect(block('2026-03-04')).toEqual({ off: 9, leave: 5, from: '2026-03-02', to: '2026-03-06' });
+  });
+
+  it('joins a day between two hits into one long break', () => {
+    // Mon 30 Nov and Tue 1 Dec 2026 are holidays: Wed 2 alone buys 5 (Sat–Wed); Thu 3 alone buys 1,
+    // but Wed–Fri buys Sat 28 Nov – Sun 6 Dec, 9 days for 3, as good per day as a regular Friday.
+    expect(block('2026-12-02')).toEqual({ off: 5, leave: 1, from: '2026-12-02', to: '2026-12-02' });
+    expect(valueOf('2026-12-03', RO, lookup)).toBe(3);
+    expect(block('2026-12-03')).toEqual({ off: 9, leave: 3, from: '2026-12-02', to: '2026-12-04' });
+    // Fri 4 alone is also 3 for 1; the longer break wins the tie.
+    expect(block('2026-12-04')).toEqual({ off: 9, leave: 3, from: '2026-12-02', to: '2026-12-04' });
+    // Jan 2027: Fri 1, Sat 2, Wed 6, Thu 7 are holidays. Mon 4 alone buys 4; Tue 5 pairs with it for 7 in 2.
+    expect(block('2027-01-04')).toEqual({ off: 4, leave: 1, from: '2027-01-04', to: '2027-01-04' });
+    expect(valueOf('2027-01-05', RO, lookup)).toBe(3.5);
+    expect(block('2027-01-05')).toEqual({ off: 7, leave: 2, from: '2027-01-04', to: '2027-01-05' });
+    // Christmas week 2026: Mon 28 – Thu 31 buys Fri 25 Dec – Sun 3 Jan, 10 days for 4.
+    expect(valueOf('2026-12-29', RO, lookup)).toBe(2.5);
+    expect(block('2026-12-29')).toEqual({ off: 10, leave: 4, from: '2026-12-28', to: '2026-12-31' });
   });
 
   it('is 0 on a free day and ignores holidays when they are off or not loaded', () => {
     expect(valueOf('2026-05-01', RO, lookup)).toBe(0); // the holiday itself
     expect(valueOf('2026-05-02', RO, lookup)).toBe(0); // Saturday
-    expect(valueOf('2026-04-30', { ...RO, holidays: false }, lookup)).toBe(1);
-    expect(valueOf('2026-04-30', RO, EMPTY_LOOKUP)).toBe(1);
+    expect(block('2026-05-02')).toBeNull();
+    // Without the holiday, Thu 30 Apr is best paired with Fri 1 May: 4 days for 2
+    expect(valueOf('2026-04-30', { ...RO, holidays: false }, lookup)).toBe(2);
+    expect(valueOf('2026-04-30', RO, EMPTY_LOOKUP)).toBe(2);
   });
 
   it('looks across the year edge', () => {
     // Wed 31 Dec 2025 → Thu 1 and Fri 2 Jan 2026 are holidays, then the weekend
     expect(valueOf('2025-12-31', RO, lookup)).toBe(5);
-    // Thu 31 Dec 2026 → Fri 1 Jan 2027 is a holiday in the test lookup, then the weekend
+    // Thu 31 Dec 2026 → Fri 1 and Sat 2 Jan 2027 are holidays, then Sunday
     expect(valueOf('2026-12-31', RO, lookup)).toBe(4);
   });
 
-  it('puts the value on every day cell', () => {
+  it('puts the value and the block on every day cell', () => {
     const mar = buildYear(2026, ctxOf(SEED_TRIPS)).months[2];
-    const value = (k: string) => mar.cells.find((c) => c?.key === k)!.value;
-    expect(value('2026-03-02')).toBe(3);
-    expect(value('2026-03-04')).toBe(1);
-    expect(value('2026-03-07')).toBe(0);
+    const cell = (k: string) => mar.cells.find((c) => c?.key === k)!;
+    expect(cell('2026-03-02').value).toBe(3);
+    expect(cell('2026-03-02').best).toEqual({ off: 3, leave: 1, from: '2026-03-02', to: '2026-03-02' });
+    expect(cell('2026-03-04').value).toBeCloseTo(1.8);
+    expect(cell('2026-03-07').value).toBe(0);
+    expect(cell('2026-03-07').best).toBeNull();
   });
 });
 
