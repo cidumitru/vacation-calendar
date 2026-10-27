@@ -278,7 +278,12 @@ export function App() {
     hintKind = 'error';
   } else if (pa) {
     const c = count(pa, pb, settings, lookup);
-    hint = `${fmt(pa, year)}${pb !== pa ? ` → ${fmt(pb, year)}` : ''} · ${c.all} ${c.all === 1 ? 'day' : 'days'}, ${c.off} off work`;
+    // A pick that lands on a public holiday says which one: "Fri 1 May (Labour Day)".
+    const day = (k: string) => {
+      const h = settings.holidays ? lookup(yearOf(k))[k] : '';
+      return fmt(k, year) + (h ? ` (${h})` : '');
+    };
+    hint = `${day(pa)}${pb !== pa ? ` → ${day(pb)}` : ''} · ${c.all} ${c.all === 1 ? 'day' : 'days'}, ${c.off} off work`;
     hintKind = 'draft';
   }
 

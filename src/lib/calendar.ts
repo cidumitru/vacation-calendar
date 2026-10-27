@@ -46,7 +46,7 @@ export interface DayCell {
   weight: 400 | 600;
   radius: string;
   dot: string | null;
-  title: string;
+  holiday: string; // '' when none; shown by the custom tooltip, never a native title
   aria: string;
 }
 
@@ -61,7 +61,6 @@ export interface MonthModel {
 export interface YearModel {
   y: number;
   label: string;
-  summary: string;
   weekdays: string[];
   months: MonthModel[];
   used: number;
@@ -129,7 +128,6 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
   const H = S.holidays ? ctx.lookup(y) : {};
   const offBy: Record<string, number> = {};
   let used = 0;
-  let holWk = 0;
 
   const months = MONTH_NAMES.map((name, m): MonthModel => {
     const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
@@ -153,7 +151,6 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
 
     info.forEach((c, ix) => {
       const free = c.we || !!c.hol;
-      if (c.hol && !c.we) holWk++;
       if (c.t && !free) {
         mOff++;
         used++;
@@ -209,7 +206,7 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
         weight,
         dot,
         radius: `${r(jl)} ${r(jr)} ${r(jr)} ${r(jl)}`,
-        title: c.hol,
+        holiday: c.hol,
         aria: `${DAY_SHORT[c.g]} ${c.d} ${name}${c.hol ? `, ${c.hol}` : ''}${c.t ? `, ${c.t.name}` : ''}`,
       });
     });
@@ -222,13 +219,9 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
     };
   });
 
-  let summary = `${used} of ${S.allowance} days off planned`;
-  if (S.holidays) summary += ` · ${holWk} ${holWk === 1 ? 'holiday' : 'holidays'} on weekdays`;
-
   return {
     y,
     label: `Year ${y}`,
-    summary,
     weekdays: ctx.sunFirst ? WEEKDAYS_SUN : WEEKDAYS_MON,
     months,
     used,

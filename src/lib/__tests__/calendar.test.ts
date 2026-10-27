@@ -18,7 +18,6 @@ describe('Counting days off', () => {
     expect(year.used).toBe(17);
     expect(RO.allowance - year.used).toBe(8);
     expect(Object.keys(year.offBy)).toHaveLength(3);
-    expect(year.summary).toBe('17 of 25 days off planned · 11 holidays on weekdays');
   });
 
   it('Fri 6 Mar → Tue 10 Mar 2026 is 5 days, 3 off work', () => {
@@ -70,10 +69,10 @@ describe('Day cell states', () => {
     expect(c16.aria).toBe('Mon 16 February, Winter break');
   });
 
-  it('names holidays in the accessible name and title', () => {
+  it('names holidays in the accessible name and the holiday field', () => {
     const year = buildYear(2026, ctxOf([]));
     const jun1 = year.months[5].cells.find((c) => c?.key === '2026-06-01')!;
-    expect(jun1.title).toBe('Children’s Day · Whit Monday');
+    expect(jun1.holiday).toBe('Children’s Day · Whit Monday');
     expect(jun1.aria).toBe('Mon 1 June, Children’s Day · Whit Monday');
     expect(jun1.fg).toBe('#B80014');
   });
