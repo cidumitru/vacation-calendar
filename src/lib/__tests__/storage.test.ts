@@ -1,0 +1,58 @@
+import { describe, expect, it } from 'vitest';
+import { STORE_KEY, guessCountry, load, mergeSettings, save } from '../storage';
+
+class MemoryStorage {
+  map = new Map<string, string>();
+  getItem(k: string) { return this.map.get(k) ?? null; }
+  setItem(k: string, v: string) { this.map.set(k, v); }
+}
+
+describe('Default country', () => {
+  it('prefers the time zone, then the language, then RO', () => {
+    expect(guessCountry('Europe/Bucharest', 'en-US')).toBe('RO');
+    expect(guessCountry('Europe/London', 'ro')).toBe('GB');
+    expect(guessCountry('America/New_York', 'fr')).toBe('US');
+    expect(guessCountry('Pacific/Honolulu', '')).toBe('US');
+    expect(guessCountry('Asia/Tokyo', 'ro-MD')).toBe('MD');
+    expect(guessCountry('Asia/Tokyo', 'en-GB')).toBe('GB');
+    expect(guessCountry('Asia/Tokyo', 'de-AT')).toBe('AT');
+    expect(guessCountry('Asia/Tokyo', 'de')).toBe('DE');
+    expect(guessCountry('Asia/Tokyo', 'en')).toBe('US');
+    expect(guessCountry('Asia/Tokyo', '')).toBe('RO');
+  });
+});
+
+describe('Settings merge and migration', () => {
+  it('migrates the first release’s UK codes to a country plus region', () => {
+    expect(mergeSettings({ country: 'GB-EAW' })).toMatchObject({ country: 'GB', region: 'GB-ENG' });
+    expect(mergeSettings({ country: 'GB-SCT' })).toMatchObject({ country: 'GB', region: 'GB-SCT' });
+    expect(mergeSettings({ country: 'MD' })).toMatchObject({ country: 'MD', region: null });
+  });
+
+  it('keeps a region only when it belongs to the country', () => {
+    expect(mergeSettings({ country: 'DE', region: 'DE-BY' }).region).toBe('DE-BY');
+    expect(mergeSettings({ country: 'DE', region: 'GB-SCT' }).region).toBeNull();
+    expect(mergeSettings({ country: 'DE', region: 'bavaria' }).region).toBeNull();
+  });
+
+  it('fills missing keys with defaults and clamps the allowance', () => {
+    const s = mergeSettings({ allowance: 150, weekStart: 'Friday' });
+    expect(s.allowance).toBe(99);
+    expect(s.weekStart).toBe('Monday');
+    expect(s.holidays).toBe(true);
+  });
+});
+
+describe('load / save', () => {
+  it('round-trips trips and settings and falls back to seeds', () => {
+    const storage = new MemoryStorage();
+    const first = load(storage);
+    expect(first.trips).toHaveLength(3);
+    save({ trips: [], settings: { ...first.settings, allowance: 30 } }, storage);
+    const second = load(storage);
+    expect(second.trips).toEqual([]);
+    expect(second.settings.allowance).toBe(30);
+    storage.setItem(STORE_KEY, '{corrupt');
+    expect(load(storage).trips).toHaveLength(3);
+  });
+});

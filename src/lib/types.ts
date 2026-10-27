@@ -1,15 +1,3 @@
-export type CountryCode =
-  | 'FR'
-  | 'DE'
-  | 'IT'
-  | 'MD'
-  | 'PL'
-  | 'RO'
-  | 'ES'
-  | 'GB-EAW'
-  | 'GB-SCT'
-  | 'US';
-
 export type WeekStart = 'Monday' | 'Sunday';
 
 export interface Trip {
@@ -22,7 +10,8 @@ export interface Trip {
 
 export interface Settings {
   holidays: boolean; // default true
-  country: CountryCode; // default: guessed from time zone / language
+  country: string; // ISO 3166-1 alpha-2 as Nager.Date lists it, e.g. 'RO'; default: guessed
+  region: string | null; // ISO 3166-2 subdivision from Nager's `counties` (e.g. 'GB-SCT'); null = nationwide days only
   weekStart: WeekStart; // default 'Monday'
   allowance: number; // 0–99, default 25
 }

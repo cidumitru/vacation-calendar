@@ -828,3 +828,21 @@ p {
     transition: none;
   }
 }
+
+/* ---------- Holiday data status ---------- */
+.settings-note-error {
+  color: var(--holiday-text);
+}
+
+.retry-button {
+  align-self: flex-start;
+  margin: -8px 0 0;
+}
+
+.settings-source {
+  margin: 0;
+}
+
+.settings-source a {
+  color: var(--accent-text);
+}

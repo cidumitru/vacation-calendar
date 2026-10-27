@@ -1,5 +1,5 @@
 import { DAY_SHORT, MONTH_NAMES, eachDay, iso, isWeekend, yearOf } from './dates';
-import { holidays } from './holidays';
+import { EMPTY_LOOKUP, type HolidayLookup } from './holidays';
 import { hexA, tone } from './palette';
 import type { Settings, Trip } from './types';
 
@@ -13,18 +13,18 @@ export function ownMap(trips: Trip[]): OwnMap {
 }
 
 /** A day is free (costs nothing) on a weekend or, with holidays on, on a public holiday. */
-export function isFree(key: string, settings: Settings): boolean {
+export function isFree(key: string, settings: Settings, lookup: HolidayLookup): boolean {
   if (isWeekend(key)) return true;
   if (!settings.holidays) return false;
-  return !!holidays(settings.country, yearOf(key))[key];
+  return !!lookup(yearOf(key))[key];
 }
 
-export function count(a: string, b: string, settings: Settings): { all: number; off: number } {
+export function count(a: string, b: string, settings: Settings, lookup: HolidayLookup): { all: number; off: number } {
   let all = 0;
   let off = 0;
   eachDay(a, b, (k) => {
     all++;
-    if (!isFree(k, settings)) off++;
+    if (!isFree(k, settings, lookup)) off++;
   });
   return { all, off };
 }
@@ -72,6 +72,7 @@ export interface BuildContext {
   own: OwnMap;
   prev: Record<string, true>;
   settings: Settings;
+  lookup: HolidayLookup;
   sunFirst: boolean;
   accent: string;
   accentTint: string;
@@ -81,7 +82,14 @@ export interface BuildContext {
   dTo: string;
 }
 
-export function buildContext(trips: Trip[] | OwnMap, dFrom: string, dTo: string, settings: Settings, accent: string): BuildContext {
+export function buildContext(
+  trips: Trip[] | OwnMap,
+  dFrom: string,
+  dTo: string,
+  settings: Settings,
+  accent: string,
+  lookup: HolidayLookup = EMPTY_LOOKUP,
+): BuildContext {
   const own = Array.isArray(trips) ? ownMap(trips) : trips;
   const [pa, pb] = draftRange(dFrom, dTo);
   const prev: Record<string, true> = {};
@@ -90,6 +98,7 @@ export function buildContext(trips: Trip[] | OwnMap, dFrom: string, dTo: string,
     own,
     prev,
     settings,
+    lookup,
     sunFirst: settings.weekStart === 'Sunday',
     accent,
     accentTint: hexA(accent, 0.12),
@@ -117,7 +126,7 @@ const WEEKDAYS_SUN = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
 export function buildYear(y: number, ctx: BuildContext): YearModel {
   const S = ctx.settings;
-  const H = S.holidays ? holidays(S.country, y) : {};
+  const H = S.holidays ? ctx.lookup(y) : {};
   const offBy: Record<string, number> = {};
   let used = 0;
   let holWk = 0;

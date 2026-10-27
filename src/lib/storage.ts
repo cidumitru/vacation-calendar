@@ -1,7 +1,11 @@
-import { isCountryCode } from './holidays';
-import type { CountryCode, Settings, Stored, Trip } from './types';
+import type { Settings, Stored, Trip } from './types';
 
 export const STORE_KEY = 'vp-apple-v1';
+
+export interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
 
 export const SEED_TRIPS: Trip[] = [
   { id: 'seed0', name: 'Winter break', from: '2026-02-16', to: '2026-02-20', color: '#0A7D8C' },
@@ -9,7 +13,10 @@ export const SEED_TRIPS: Trip[] = [
   { id: 'seed2', name: 'Long weekend', from: '2026-10-23', to: '2026-10-26', color: '#D6336C' },
 ];
 
-const BY_TZ: Record<string, CountryCode> = {
+export const COUNTRY_RE = /^[A-Z]{2}$/;
+export const REGION_RE = /^[A-Z]{2}-[A-Z0-9]{1,3}$/;
+
+const BY_TZ: Record<string, string> = {
   'Europe/Bucharest': 'RO',
   'Europe/Chisinau': 'MD',
   'Europe/Berlin': 'DE',
@@ -17,13 +24,22 @@ const BY_TZ: Record<string, CountryCode> = {
   'Europe/Rome': 'IT',
   'Europe/Madrid': 'ES',
   'Europe/Warsaw': 'PL',
-  'Europe/London': 'GB-EAW',
+  'Europe/London': 'GB',
 };
 
-const BY_LANG: Record<string, CountryCode> = { ro: 'RO', de: 'DE', fr: 'FR', it: 'IT', es: 'ES', pl: 'PL' };
+/** The browser's own locale data (CLDR likely subtags) turns 'ro' into RO, 'en' into US, 'de-AT' into AT. */
+function regionOfLanguage(lang: string): string | null {
+  if (!lang) return null;
+  try {
+    const r = new Intl.Locale(lang).maximize().region;
+    return r && COUNTRY_RE.test(r) ? r : null;
+  } catch {
+    return null;
+  }
+}
 
-/** Default region: browser time zone first, then language, otherwise RO. */
-export function guessCountry(timeZone?: string, language?: string): CountryCode {
+/** Default country (ISO 3166-1 alpha-2): browser time zone first, then language, otherwise RO. */
+export function guessCountry(timeZone?: string, language?: string): string {
   let tz = timeZone ?? '';
   let lang = language ?? '';
   if (timeZone === undefined) {
@@ -32,17 +48,13 @@ export function guessCountry(timeZone?: string, language?: string): CountryCode 
   if (language === undefined) {
     try { lang = (typeof navigator !== 'undefined' && navigator.language) || ''; } catch { lang = ''; }
   }
-  lang = lang.toLowerCase();
   if (BY_TZ[tz]) return BY_TZ[tz];
   if (/^America\/(New_York|Chicago|Denver|Los_Angeles|Phoenix|Anchorage|Detroit|Boise|Indiana|Kentucky)/.test(tz) || tz === 'Pacific/Honolulu') return 'US';
-  if (lang === 'ro-md') return 'MD';
-  if (lang === 'en-gb') return 'GB-EAW';
-  if (lang === 'en-us') return 'US';
-  return BY_LANG[lang.split('-')[0]] ?? 'RO';
+  return regionOfLanguage(lang) ?? 'RO';
 }
 
 export function defaultSettings(): Settings {
-  return { holidays: true, country: guessCountry(), weekStart: 'Monday', allowance: 25 };
+  return { holidays: true, country: guessCountry(), region: null, weekStart: 'Monday', allowance: 25 };
 }
 
 function isTrip(v: unknown): v is Trip {
@@ -51,24 +63,48 @@ function isTrip(v: unknown): v is Trip {
   return typeof t.id === 'string' && typeof t.name === 'string' && typeof t.from === 'string' && typeof t.to === 'string' && typeof t.color === 'string';
 }
 
+/** Region codes from the first release, before holidays came from Nager.Date. */
+const LEGACY_COUNTRIES: Record<string, { country: string; region: string | null }> = {
+  'GB-EAW': { country: 'GB', region: 'GB-ENG' },
+  'GB-SCT': { country: 'GB', region: 'GB-SCT' },
+};
+
 /** Saved settings are merged over the defaults, so keys added later get their default. */
-function mergeSettings(saved: unknown): Settings {
+export function mergeSettings(saved: unknown): Settings {
   const d = defaultSettings();
   if (!saved || typeof saved !== 'object') return d;
   const s = saved as Record<string, unknown>;
+  let country = d.country;
+  let region: string | null = d.region;
+  if (typeof s.country === 'string') {
+    const legacy = LEGACY_COUNTRIES[s.country];
+    if (legacy) ({ country, region } = legacy);
+    else if (COUNTRY_RE.test(s.country)) country = s.country;
+  }
+  if (typeof s.region === 'string' && REGION_RE.test(s.region) && s.region.startsWith(country)) region = s.region;
+  else if (s.region === null) region = null;
   return {
     holidays: typeof s.holidays === 'boolean' ? s.holidays : d.holidays,
-    country: isCountryCode(s.country) ? s.country : d.country,
+    country,
+    region,
     weekStart: s.weekStart === 'Sunday' || s.weekStart === 'Monday' ? s.weekStart : d.weekStart,
     allowance: typeof s.allowance === 'number' && Number.isFinite(s.allowance) ? Math.min(99, Math.max(0, Math.round(s.allowance))) : d.allowance,
   };
 }
 
+function defaultStorage(): StorageLike | null {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Reads the store once; a missing, corrupt or blocked store falls back to defaults and seeds. */
-export function load(): Stored {
+export function load(storage: StorageLike | null = defaultStorage()): Stored {
   let saved: unknown = null;
   try {
-    saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
+    saved = JSON.parse(storage?.getItem(STORE_KEY) || 'null');
   } catch {
     saved = null;
   }
@@ -77,9 +113,9 @@ export function load(): Stored {
   return { trips, settings: mergeSettings(obj?.settings) };
 }
 
-export function save(data: Stored): void {
+export function save(data: Stored, storage: StorageLike | null = defaultStorage()): void {
   try {
-    window.localStorage.setItem(STORE_KEY, JSON.stringify(data));
+    storage?.setItem(STORE_KEY, JSON.stringify(data));
   } catch {
     // Storage blocked or full: the page keeps working from memory.
   }

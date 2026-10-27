@@ -1,51 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { isoMs } from '../dates';
-import { COUNTRIES, countHolidays, easterOrthodox, easterWestern, holidays } from '../holidays';
-import type { CountryCode } from '../types';
+import { GB_2026, RO_2026 } from '../__fixtures__/nager';
+import { applies, countHolidays, regionsOf, toHolidayMap } from '../holidays';
 
-describe('Easter', () => {
-  it('2026: Western Sun 5 Apr, Orthodox Sun 12 Apr', () => {
-    expect(isoMs(easterWestern(2026))).toBe('2026-04-05');
-    expect(isoMs(easterOrthodox(2026))).toBe('2026-04-12');
+describe('toHolidayMap', () => {
+  it('maps dates to names and merges two holidays on one date with " · "', () => {
+    const map = toHolidayMap(RO_2026, null, 2026);
+    expect(countHolidays(map)).toBe(16);
+    expect(map['2026-06-01']).toBe('Children’s Day · Whit Monday');
+    expect(map['2026-12-25']).toBe('Christmas Day');
+  });
+
+  it('keeps only the asked year', () => {
+    const mixed = [...RO_2026, { ...RO_2026[0], date: '2027-01-01' }];
+    expect(countHolidays(toHolidayMap(mixed, null, 2026))).toBe(16);
+    expect(toHolidayMap(mixed, null, 2027)).toEqual({ '2027-01-01': 'New Year’s Day' });
+  });
+
+  it('includes regional holidays only for the selected region', () => {
+    const nationwide = toHolidayMap(GB_2026, null, 2026);
+    const scotland = toHolidayMap(GB_2026, 'GB-SCT', 2026);
+    const england = toHolidayMap(GB_2026, 'GB-ENG', 2026);
+    expect(countHolidays(nationwide)).toBe(6);
+    expect(countHolidays(scotland)).toBe(9);
+    expect(countHolidays(england)).toBe(8);
+    expect(scotland['2026-08-03']).toBe('Summer Bank Holiday');
+    expect(england['2026-08-03']).toBeUndefined();
+    expect(england['2026-08-31']).toBe('Summer Bank Holiday');
+  });
+
+  it('ignores types that are not public holidays', () => {
+    expect(toHolidayMap(GB_2026, 'GB-ENG', 2026)['2026-12-31']).toBeUndefined();
+    expect(applies(GB_2026[GB_2026.length - 1], 'GB-ENG')).toBe(false);
+  });
+
+  it('treats a holiday with no counties as nationwide even if global is false', () => {
+    const h = { ...RO_2026[0], global: false, counties: null };
+    expect(applies(h, null)).toBe(true);
   });
 });
 
-describe('Public holidays 2026 (distinct dates, observed and substitute days included)', () => {
-  const expected: Record<CountryCode, number> = {
-    FR: 11, DE: 9, IT: 13, MD: 13, PL: 14, RO: 16, ES: 10, 'GB-EAW': 9, 'GB-SCT': 10, US: 12,
-  };
-  for (const { code } of COUNTRIES) {
-    it(`${code} has ${expected[code]} holidays`, () => {
-      expect(countHolidays(code, 2026)).toBe(expected[code]);
-    });
-  }
-
-  it('UK moves Boxing Day 2026 to Mon 28 Dec as a substitute day', () => {
-    expect(holidays('GB-EAW', 2026)['2026-12-28']).toBe('Boxing Day (substitute day)');
-    expect(holidays('GB-SCT', 2026)['2026-12-28']).toBe('Boxing Day (substitute day)');
-  });
-
-  it('US observes Independence Day 2026 on Fri 3 Jul', () => {
-    expect(holidays('US', 2026)['2026-07-03']).toBe('Independence Day (observed)');
-  });
-
-  it('US observes New Year’s Day on Dec 31 when next Jan 1 is a Saturday (2021)', () => {
-    expect(holidays('US', 2021)['2021-12-31']).toBe('New Year’s Day (observed)');
-  });
-
-  it('joins two holidays on the same date with " · " (RO 2026-06-01)', () => {
-    expect(holidays('RO', 2026)['2026-06-01']).toBe('Children’s Day · Pentecost Monday');
-  });
-
-  it('applies "from" years (IT St Francis from 2026, PL Christmas Eve from 2025)', () => {
-    expect(holidays('IT', 2025)['2025-10-04']).toBeUndefined();
-    expect(holidays('IT', 2026)['2026-10-04']).toBe('St Francis of Assisi');
-    expect(holidays('PL', 2024)['2024-12-24']).toBeUndefined();
-    expect(holidays('PL', 2025)['2025-12-24']).toBe('Christmas Eve');
-  });
-
-  it('lists countries alphabetically by label', () => {
-    const labels = COUNTRIES.map((c) => c.label);
-    expect(labels).toEqual([...labels].sort((a, b) => a.localeCompare(b, 'en')));
+describe('regionsOf', () => {
+  it('lists the distinct subdivision codes, sorted', () => {
+    expect(regionsOf(GB_2026)).toEqual(['GB-ENG', 'GB-NIR', 'GB-SCT', 'GB-WLS']);
+    expect(regionsOf(RO_2026)).toEqual([]);
   });
 });

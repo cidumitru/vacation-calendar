@@ -1,11 +1,23 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type UIEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type FormEvent,
+  type UIEvent,
+} from 'react';
 import { Calendar } from './components/Calendar';
 import { SettingsPopover } from './components/SettingsPopover';
 import { Sidebar, type HintKind, type Segment, type TripRow } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { buildContext, buildYear, count, draftRange, ownMap, type YearModel } from './lib/calendar';
 import { daysBetween, eachDay, fmt, yearOf } from './lib/dates';
-import { holidayNote } from './lib/holidays';
+import { countHolidays, regionsOf, toHolidayMap, type HolidayLookup, type HolidayMap } from './lib/holidays';
+import { holidayStore } from './lib/holidayStore';
 import { ACCENT, PALETTE, accentText, hexA } from './lib/palette';
 import { load, save } from './lib/storage';
 import type { Draft, Settings, Trip } from './lib/types';
@@ -25,7 +37,7 @@ const reduceMotion = (): boolean => {
 };
 
 export function App() {
-  const [initial] = useState(load);
+  const [initial] = useState(() => load());
   const [trips, setTrips] = useState<Trip[]>(initial.trips);
   const [settings, setSettings] = useState<Settings>(initial.settings);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -45,9 +57,38 @@ export function App() {
     save({ trips, settings });
   }, [trips, settings]);
 
-  // ---- Year models, cached until trips, the draft, settings or the accent change.
+  // ---- Public holidays from Nager.Date, through the cached store.
+  const holidayVersion = useSyncExternalStore(holidayStore.subscribe, holidayStore.getVersion);
+  const [pa, pb] = draftRange(draft.from, draft.to);
+  useEffect(() => {
+    if (!settings.holidays) return;
+    holidayStore.ensureCountries();
+    const years = new Set<number>();
+    for (let y = yFrom; y <= yTo; y++) years.add(y);
+    if (pa) {
+      years.add(yearOf(pa));
+      years.add(yearOf(pb));
+    }
+    for (const y of years) if (y >= MIN_YEAR && y <= MAX_YEAR) holidayStore.ensure(settings.country, y);
+  }, [settings.holidays, settings.country, yFrom, yTo, pa, pb]);
+
+  const lookup = useMemo<HolidayLookup>(() => {
+    const maps = new Map<number, HolidayMap>();
+    return (y: number) => {
+      let m = maps.get(y);
+      if (!m) {
+        m = settings.holidays ? toHolidayMap(holidayStore.get(settings.country, y) ?? [], settings.region, y) : {};
+        maps.set(y, m);
+      }
+      return m;
+    };
+    // holidayVersion changes whenever the store receives data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.holidays, settings.country, settings.region, holidayVersion]);
+
+  // ---- Year models, cached until trips, the draft, settings, holiday data or the accent change.
   const own = useMemo(() => ownMap(trips), [trips]);
-  const ctx = useMemo(() => buildContext(own, draft.from, draft.to, settings, ACCENT), [own, draft.from, draft.to, settings]);
+  const ctx = useMemo(() => buildContext(own, draft.from, draft.to, settings, ACCENT, lookup), [own, draft.from, draft.to, settings, lookup]);
   const cacheRef = useRef<{ ctx: typeof ctx; years: Map<number, YearModel> } | null>(null);
   if (!cacheRef.current || cacheRef.current.ctx !== ctx) cacheRef.current = { ctx, years: new Map() };
   const cache = cacheRef.current.years;
@@ -230,14 +271,13 @@ export function App() {
   const toggleSettings = () => setShowSettings((v) => !v);
 
   // ---- Derived view values for the year in view.
-  const [pa, pb] = draftRange(draft.from, draft.to);
   let hint = 'Or click a first and a last day in the calendar.';
   let hintKind: HintKind = 'default';
   if (err) {
     hint = err;
     hintKind = 'error';
   } else if (pa) {
-    const c = count(pa, pb, settings);
+    const c = count(pa, pb, settings, lookup);
     hint = `${fmt(pa, year)}${pb !== pa ? ` → ${fmt(pb, year)}` : ''} · ${c.all} ${c.all === 1 ? 'day' : 'days'}, ${c.off} off work`;
     hintKind = 'draft';
   }
@@ -299,7 +339,16 @@ export function App() {
         {showSettings && (
           <SettingsPopover
             settings={settings}
-            note={holidayNote(settings.country, year, settings.holidays)}
+            year={year}
+            countries={holidayStore.getCountries()}
+            countriesStatus={holidayStore.countriesStatus()}
+            regions={regionsOf(holidayStore.get(settings.country, year) ?? [])}
+            holidayCount={countHolidays(lookup(year))}
+            status={holidayStore.status(settings.country, year)}
+            onRetry={() => {
+              holidayStore.retry(settings.country, year);
+              holidayStore.retryCountries();
+            }}
             onChange={patchSettings}
             onClose={closeSettings}
           />
