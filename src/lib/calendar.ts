@@ -1,4 +1,4 @@
-import { DAY_SHORT, MONTH_NAMES, eachDay, iso, isWeekend, yearOf } from './dates';
+import { DAY, DAY_SHORT, MONTH_NAMES, eachDay, iso, isWeekend, isoMs, ms, yearOf } from './dates';
 import { EMPTY_LOOKUP, type HolidayLookup } from './holidays';
 import type { Settings, Trip } from './types';
 
@@ -16,6 +16,21 @@ export function isFree(key: string, settings: Settings, lookup: HolidayLookup): 
   if (isWeekend(key)) return true;
   if (!settings.holidays) return false;
   return !!lookup(yearOf(key))[key];
+}
+
+/**
+ * The value of a day: how many days off in a row one day of leave buys there. The day itself plus the
+ * weekends and public holidays touching it on either side, so a lone weekday is 1, a Monday or a Friday
+ * is 3 and a bridge day next to a holiday is 4 or more. 0 for a day that is already free. Trips are left
+ * out on purpose: the value describes the calendar, not the plan, and the heat map shades it.
+ */
+export function valueOf(key: string, settings: Settings, lookup: HolidayLookup): number {
+  if (isFree(key, settings, lookup)) return 0;
+  let n = 1;
+  const t = ms(key);
+  for (let k = isoMs(t - DAY); isFree(k, settings, lookup); k = isoMs(ms(k) - DAY)) n++;
+  for (let k = isoMs(t + DAY); isFree(k, settings, lookup); k = isoMs(ms(k) + DAY)) n++;
+  return n;
 }
 
 export function count(a: string, b: string, settings: Settings, lookup: HolidayLookup): { all: number; off: number } {
@@ -53,6 +68,8 @@ export interface DayCell {
   joinLeft: boolean;
   joinRight: boolean;
   holiday: string; // '' when none; shown in a tooltip and in the accessible name
+  /** Days off in a row one day of leave buys here (see valueOf); 0 on a free day. Shades the heat map. */
+  value: number;
   aria: string;
 }
 
@@ -179,6 +196,7 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
         joinLeft,
         joinRight,
         holiday: c.hol,
+        value: valueOf(c.key, S, ctx.lookup),
         aria: `${DAY_SHORT[c.g]} ${c.d} ${name}${c.hol ? `, ${c.hol}` : ''}${c.t ? `, ${c.t.name}` : ''}`,
       });
     });

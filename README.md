@@ -5,6 +5,7 @@ A yearly vacation planner: one client-only web page with no backend, no accounts
 - Endless calendar of years (1950–2099) with weekends and public holidays marked; holiday names show in a tooltip on hover or keyboard focus
 - Public holidays for every country [Nager.Date](https://date.nager.at) covers, with an optional region (ISO 3166-2 subdivision) for countries whose holidays differ by state or nation
 - Days-off counting per calendar year: weekends and holidays are free
+- A heat map view (the flame button in the header) that shades every working day by its value: how many days off in a row one day of leave buys there, from 1 for a lone weekday to 3 for a Monday or Friday and 5 or more for a bridge day next to public holidays; hover or focus a shaded day for the number
 - Sidebar with a summary, a New Trip form (a date-range picker, or click two days in the calendar) and the trips of the year in view; removing a trip can be undone from the toast
 - Settings popover: holidays on/off, searchable country list, region, week start, days off per year
 - Light, dark and system appearance; on phones the sidebar opens as a sheet
@@ -24,10 +25,14 @@ Stack: Vite, TypeScript, React 19, Tailwind CSS v4 and [shadcn/ui](https://ui.sh
 
 Layout:
 
-- `src/lib` holds the pure logic (`dates.ts`, `nager.ts`, `holidayStore.ts`, `holidays.ts`, `calendar.ts`, `storage.ts`, `palette.ts`). `calendar.ts` builds a semantic model of every day (trip, draft, holiday, weekend; band joins; first/last day) and leaves colours to the components.
-- `src/components/ui` is the shadcn/ui registry output, as `npx shadcn add` installs it; `components.json` is configured so more components can be added the same way. `src/components` holds the app's own pieces: `app-sidebar`, `app-header`, `year-calendar`, `date-range-picker`, `settings-popover`, `theme-toggle`, `theme-provider`.
+- `src/lib` holds the pure logic (`dates.ts`, `nager.ts`, `holidayStore.ts`, `holidays.ts`, `calendar.ts`, `storage.ts`, `palette.ts`). `calendar.ts` builds a semantic model of every day (trip, draft, holiday, weekend; band joins; first/last day; the day's value for the heat map) and leaves colours to the components.
+- `src/components/ui` is the shadcn/ui registry output, as `npx shadcn add` installs it; `components.json` is configured so more components can be added the same way. `src/components` holds the app's own pieces: `app-sidebar`, `app-header`, `year-calendar`, `heat-scale`, `date-range-picker`, `settings-popover`, `theme-toggle`, `theme-provider`.
 - `src/hooks/use-year-scroller.ts` runs the endless year list (anchored prepends, year-in-view sync, jumps).
-- `src/index.css` imports Tailwind and `shadcn/tailwind.css` and defines the design tokens as CSS custom properties, plus three small utilities that colour trip days from a `--trip` custom property.
+- `src/index.css` imports Tailwind and `shadcn/tailwind.css` and defines the design tokens as CSS custom properties, plus three small utilities that colour trip days from a `--trip` custom property and the `--heat-1`…`--heat-4` ramp of the heat map (one green hue; dark mode has its own steps).
+
+## Heat map
+
+The heat map keeps the same year grid and shades each working day by its value, `valueOf` in `calendar.ts`: the day itself plus the weekends and public holidays touching it on either side, which is how many days off in a row one day of leave buys there. A lone Wednesday is worth 1 and takes the neutral tile; a Monday or a Friday is worth 3; a Thursday before a Friday holiday is worth 4; a Monday between the New Year holidays and Epiphany can be worth 7. Values of 2 to 4 climb the ramp and 5 or more take the hottest step, so the same value always has the same colour in every year. Trips are left out of the value on purpose: it describes the calendar, not the plan. Planned trips still show as solid tiles in their colour, weekends and holidays stay plain, and the range being picked is outlined over its heat. With holidays turned off, or before their data arrives, only weekends count.
 
 ## Public holidays
 
@@ -50,4 +55,4 @@ For a user or organisation site, or a custom domain, set `BASE_PATH` to `/` in t
 
 ## Storage
 
-`vp-apple-v1` holds `{ trips, settings }`; `vp-holidays-v1` and `vp-countries-v1` hold the Nager.Date cache; `vp-theme` holds the appearance choice. A missing, corrupt or blocked store falls back to the defaults and three seed trips for 2026. Clear site data to start over.
+`vp-apple-v1` holds `{ trips, settings }` (settings include the calendar view, `calendar` or `heatmap`); `vp-holidays-v1` and `vp-countries-v1` hold the Nager.Date cache; `vp-theme` holds the appearance choice. A missing, corrupt or blocked store falls back to the defaults and three seed trips for 2026. Clear site data to start over.
