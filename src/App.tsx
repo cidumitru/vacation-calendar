@@ -6,6 +6,7 @@ import { SettingsPopover } from '@/components/settings-popover';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { YearCalendar } from '@/components/year-calendar';
+import { isMobileViewport, useIsMobile } from '@/hooks/use-mobile';
 import { useYearScroller } from '@/hooks/use-year-scroller';
 import { buildContext, buildYear, count, draftRange, ownMap, type YearModel } from '@/lib/calendar';
 import { daysBetween, eachDay, fmt, yearOf } from '@/lib/dates';
@@ -17,7 +18,9 @@ import type { Draft, Settings, Trip } from '@/lib/types';
 
 const MIN_YEAR = 1950;
 const MAX_YEAR = 2099;
-const THIS_YEAR = Math.min(MAX_YEAR, Math.max(MIN_YEAR, new Date().getFullYear()));
+const TODAY = new Date();
+const THIS_YEAR = Math.min(MAX_YEAR, Math.max(MIN_YEAR, TODAY.getFullYear()));
+const THIS_MONTH = TODAY.getMonth();
 const EMPTY_DRAFT: Draft = { name: '', from: '', to: '' };
 const SIDEBAR_STYLE = { '--sidebar-width': '18rem' } as CSSProperties;
 
@@ -27,8 +30,13 @@ export function App() {
   const [settings, setSettings] = useState<Settings>(initial.settings);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [err, setErr] = useState('');
-  const scroller = useYearScroller(THIS_YEAR, MIN_YEAR, MAX_YEAR);
-  const { year, yFrom, yTo, jumpTo } = scroller;
+  // On phones the months stack in one column, so "today" is the current month there; on wider screens it is the year.
+  const isMobile = useIsMobile();
+  const [startMonth] = useState(() => (isMobileViewport() ? THIS_MONTH : null));
+  const scroller = useYearScroller(THIS_YEAR, MIN_YEAR, MAX_YEAR, startMonth);
+  const { year, month, yFrom, yTo, jumpTo } = scroller;
+  const atToday = year === THIS_YEAR && (!isMobile || month === THIS_MONTH);
+  const goToday = () => jumpTo(THIS_YEAR, true, isMobile ? THIS_MONTH : undefined);
 
   // ---- Persistence: write after every change to trips or settings (not on first load).
   const loadedRef = useRef(false);
@@ -219,13 +227,13 @@ export function App() {
         <SidebarInset className="h-svh overflow-hidden md:h-[calc(100svh-1rem)]">
           <AppHeader
             year={year}
-            thisYear={THIS_YEAR}
+            showToday={!atToday}
             holidaysOn={settings.holidays}
             view={settings.view}
             onViewChange={(view) => patchSettings({ view })}
             onPrev={() => jumpTo(year - 1, true)}
             onNext={() => jumpTo(year + 1, true)}
-            onToday={() => jumpTo(THIS_YEAR, true)}
+            onToday={goToday}
           >
             <SettingsPopover
               settings={settings}

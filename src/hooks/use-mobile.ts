@@ -17,3 +17,12 @@ export function useIsMobile() {
 
   return !!isMobile
 }
+
+/** The same test outside React, for choices made before the first effect runs, such as where the calendar opens. */
+export function isMobileViewport(): boolean {
+  try {
+    return window.innerWidth < MOBILE_BREAKPOINT
+  } catch {
+    return false
+  }
+}
