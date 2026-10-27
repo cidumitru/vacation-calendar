@@ -43,18 +43,27 @@ const YearSection = memo(function YearSection({ model, view, onTapDay }: Section
         <Separator className="flex-1" />
       </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,100%),1fr))] gap-x-8 gap-y-8">
-        {model.months.map((m) => (
-          <Month key={m.name} model={m} weekdays={model.weekdays} view={view} onTapDay={onTapDay} />
+        {model.months.map((m, i) => (
+          <Month key={m.name} model={m} index={i} weekdays={model.weekdays} view={view} onTapDay={onTapDay} />
         ))}
       </div>
     </section>
   );
 });
 
-function Month({ model, weekdays, view, onTapDay }: { model: MonthModel; weekdays: string[]; view: CalendarView; onTapDay: (key: string) => void }) {
+interface MonthProps {
+  model: MonthModel;
+  /** 0-based month, the target of a jump to a month. */
+  index: number;
+  weekdays: string[];
+  view: CalendarView;
+  onTapDay: (key: string) => void;
+}
+
+function Month({ model, index, weekdays, view, onTapDay }: MonthProps) {
   const Cell = view === 'heatmap' ? HeatDay : Day;
   return (
-    <section aria-label={model.label} className="flex flex-col gap-2">
+    <section data-month={index} aria-label={model.label} className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2 px-1">
         <h3 className="text-base font-semibold">{model.name}</h3>
         {model.off > 0 && (
@@ -151,21 +160,26 @@ function Day({ cell, onTapDay }: DayProps) {
   );
 }
 
-// ---- Heat map view: every working day is a tile shaded by its value (the days off in a row one day of
-// leave buys there); weekends and holidays stay plain, trips keep their colour as solid tiles.
+// ---- Heat map view: the calendar view's bands drawn as tiles, with every working day shaded by its value
+// (the days off in a row one day of leave buys there). A day worth 1 stays bare.
 
+/** Which bands still join across the row: heat tiles are one day each, and so is the outline of the draft. */
+const JOINS: Partial<Record<DayKind, true>> = { trip: true, weekend: true, holiday: true };
+
+const HOLIDAY_TILE = 'bg-destructive/10 text-destructive dark:bg-destructive/20';
+
+/** Free days and trips keep their calendar colours; the range being picked is outlined over whatever it covers. */
 function tileClass(c: DayCell): string {
   if (c.picked || (c.kind === 'draft' && c.end)) return 'bg-foreground font-semibold text-background';
   switch (c.kind) {
     case 'trip':
       return 'trip-solid font-semibold';
     case 'holiday':
-      return 'font-semibold text-destructive';
+      return cn(HOLIDAY_TILE, 'font-semibold');
     case 'weekend':
-      return 'text-muted-foreground';
+      return 'bg-muted text-muted-foreground';
     case 'draft':
-      // The pending range is outlined over its heat, so the values stay readable while picking.
-      return cn('inset-ring-2 inset-ring-foreground font-semibold', c.value > 0 ? HEAT_CLASS[heatLevel(c.value)] : c.holiday && 'text-destructive');
+      return cn('inset-ring-2 inset-ring-foreground font-semibold', c.value > 0 ? HEAT_CLASS[heatLevel(c.value)] : c.holiday ? HOLIDAY_TILE : 'bg-muted');
     default:
       return HEAT_CLASS[heatLevel(c.value)];
   }
@@ -183,19 +197,27 @@ function HeatDay({ cell, onTapDay }: DayProps) {
   const gain = cell.kind !== 'trip' && cell.value >= 2 ? `${cell.value} days off for 1 day of leave` : '';
   const tip = cell.holiday || gain;
   const dot = tileDotClass(cell);
+  const joinLeft = !!JOINS[cell.kind] && cell.joinLeft;
+  const joinRight = !!JOINS[cell.kind] && cell.joinRight;
   const button = (
     <button
       type="button"
       aria-label={gain ? `${cell.aria}, ${gain}` : cell.aria}
       onClick={() => onTapDay(cell.key)}
       style={cell.color ? ({ '--trip': cell.color } as CSSProperties) : undefined}
-      className="group relative grid h-8 min-w-0 place-items-center px-0.5 outline-none select-none"
+      className={cn(
+        'group relative grid h-8 min-w-0 place-items-center outline-none select-none',
+        joinLeft ? 'pl-0' : 'pl-0.5',
+        joinRight ? 'pr-0' : 'pr-0.5',
+      )}
     >
       <span
         className={cn(
-          'relative grid h-7 w-full max-w-9 place-items-center rounded-md text-[13px] leading-none transition-shadow',
+          'relative grid h-7 w-full place-items-center rounded-md text-[13px] leading-none transition-shadow',
           'group-hover:ring-1 group-hover:ring-foreground/40 group-hover:ring-inset',
           'group-focus-visible:ring-3 group-focus-visible:ring-ring/50',
+          joinLeft && 'rounded-l-none',
+          joinRight && 'rounded-r-none',
           tileClass(cell),
         )}
       >

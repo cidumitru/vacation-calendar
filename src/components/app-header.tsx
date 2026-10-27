@@ -11,7 +11,8 @@ import type { CalendarView } from '@/lib/types';
 
 interface Props {
   year: number;
-  thisYear: number;
+  /** Away from today: another year, or on phones another month. */
+  showToday: boolean;
   holidaysOn: boolean;
   view: CalendarView;
   onViewChange: (view: CalendarView) => void;
@@ -37,7 +38,7 @@ export function AppHeader(p: Props) {
         </Button>
       </ButtonGroup>
       <h1 className="px-1 text-lg font-semibold tabular-nums">{p.year}</h1>
-      {p.year !== p.thisYear && (
+      {p.showToday && (
         // Icon-only on phones, where the header has no room for the word.
         <Button variant="ghost" size="sm" onClick={p.onToday} className="px-2 sm:px-2.5">
           <CalendarCheckIcon className="sm:hidden" />
