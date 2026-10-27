@@ -18,19 +18,64 @@ export function isFree(key: string, settings: Settings, lookup: HolidayLookup): 
   return !!lookup(yearOf(key))[key];
 }
 
-/**
- * The value of a day: how many days off in a row one day of leave buys there. The day itself plus the
- * weekends and public holidays touching it on either side, so a lone weekday is 1, a Monday or a Friday
- * is 3 and a bridge day next to a holiday is 4 or more. 0 for a day that is already free. Trips are left
- * out on purpose: the value describes the calendar, not the plan, and the heat map shades it.
- */
-export function valueOf(key: string, settings: Settings, lookup: HolidayLookup): number {
-  if (isFree(key, settings, lookup)) return 0;
-  let n = 1;
+export type FreeFn = (key: string) => boolean;
+export const freeFn = (settings: Settings, lookup: HolidayLookup): FreeFn => (k) => isFree(k, settings, lookup);
+
+/** Working days one block of leave may hold: a working week. Longer blocks only dilute the value. */
+export const MAX_LEAVE = 5;
+const WALK_CAP = 60; // days scanned per side; MAX_LEAVE working days plus the free days between them is far shorter
+
+/** A block of leave through a day: its working days plus every free day inside it and touching either end. */
+export interface Block {
+  /** Days off in a row it buys. */
+  off: number;
+  /** Working days it costs, the day included. */
+  leave: number;
+  /** Its first and last working day. */
+  from: string;
+  to: string;
+}
+
+/** Offsets (days away, from 1) of the nearest MAX_LEAVE working days on one side; one past the cap stands in for a missing one. */
+function workingDays(key: string, dir: -1 | 1, free: FreeFn): number[] {
+  const pos: number[] = [];
   const t = ms(key);
-  for (let k = isoMs(t - DAY); isFree(k, settings, lookup); k = isoMs(ms(k) - DAY)) n++;
-  for (let k = isoMs(t + DAY); isFree(k, settings, lookup); k = isoMs(ms(k) + DAY)) n++;
-  return n;
+  for (let n = 1; n <= WALK_CAP && pos.length < MAX_LEAVE; n++) {
+    if (!free(isoMs(t + dir * n * DAY))) pos.push(n);
+  }
+  while (pos.length < MAX_LEAVE) pos.push(WALK_CAP + 1);
+  return pos;
+}
+
+/**
+ * The best block of leave through this day: of every run of up to MAX_LEAVE working days that includes it,
+ * the one with the most days off per day of leave, and the longest break among equals. So a Friday alone
+ * is 3 for 1, the Thursday before a Friday holiday is 4 for 1, and a plain day wedged between two such
+ * days joins them into one long break instead of scoring nothing. null for a day that is already free.
+ * Trips are left out on purpose: the block describes the calendar, not the plan, and the heat map shades it.
+ */
+export function bestBlock(key: string, free: FreeFn): Block | null {
+  if (free(key)) return null;
+  const left = workingDays(key, -1, free);
+  const right = workingDays(key, 1, free);
+  const t = ms(key);
+  let best: Block | null = null;
+  for (let i = 0; i < MAX_LEAVE; i++) {
+    for (let j = 0; i + j < MAX_LEAVE; j++) {
+      // i working days taken on the left and j on the right; the break runs over the free days beyond them.
+      const off = left[i] + right[j] - 1;
+      const leave = 1 + i + j;
+      const better = !best || off * best.leave > best.off * leave || (off * best.leave === best.off * leave && off > best.off);
+      if (better) best = { off, leave, from: i ? isoMs(t - left[i - 1] * DAY) : key, to: j ? isoMs(t + right[j - 1] * DAY) : key };
+    }
+  }
+  return best;
+}
+
+/** The value of a day: days off per day of leave of its best block (see bestBlock). 0 for a free day. */
+export function valueOf(key: string, settings: Settings, lookup: HolidayLookup): number {
+  const b = bestBlock(key, freeFn(settings, lookup));
+  return b ? b.off / b.leave : 0;
 }
 
 export function count(a: string, b: string, settings: Settings, lookup: HolidayLookup): { all: number; off: number } {
@@ -68,8 +113,10 @@ export interface DayCell {
   joinLeft: boolean;
   joinRight: boolean;
   holiday: string; // '' when none; shown in a tooltip and in the accessible name
-  /** Days off in a row one day of leave buys here (see valueOf); 0 on a free day. Shades the heat map. */
+  /** Days off per day of leave of the best block through this day (see bestBlock); 0 on a free day. Shades the heat map. */
   value: number;
+  /** That block, for the tooltip; null on a free day. */
+  best: Block | null;
   aria: string;
 }
 
@@ -138,6 +185,16 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
   const H = S.holidays ? ctx.lookup(y) : {};
   const offBy: Record<string, number> = {};
   let used = 0;
+  // Free-day lookups are memoised: every working day's best block scans a few weeks either side.
+  const freeCache = new Map<string, boolean>();
+  const freeDay: FreeFn = (k) => {
+    let v = freeCache.get(k);
+    if (v === undefined) {
+      v = isFree(k, S, ctx.lookup);
+      freeCache.set(k, v);
+    }
+    return v;
+  };
 
   const months = MONTH_NAMES.map((name, m): MonthModel => {
     const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
@@ -186,6 +243,7 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
         kind = 'weekend';
       }
 
+      const best = bestBlock(c.key, freeDay);
       cells.push({
         n: c.d,
         key: c.key,
@@ -196,7 +254,8 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
         joinLeft,
         joinRight,
         holiday: c.hol,
-        value: valueOf(c.key, S, ctx.lookup),
+        value: best ? best.off / best.leave : 0,
+        best,
         aria: `${DAY_SHORT[c.g]} ${c.d} ${name}${c.hol ? `, ${c.hol}` : ''}${c.t ? `, ${c.t.name}` : ''}`,
       });
     });

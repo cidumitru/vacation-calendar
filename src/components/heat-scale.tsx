@@ -1,18 +1,20 @@
 import { cn } from '@/lib/utils';
 
 /**
- * The heat map shades a working day by its value: how many days off in a row one day of leave buys
- * there (see valueOf in lib/calendar.ts). A value of 1 gains nothing and stays bare. A regular long
- * weekend, worth 2 or 3 (a Monday or a Friday), takes the faintest step so that it does not crowd the
- * map; bridge days worth 4 and 5 climb the ramp and 6 or more take the hottest step.
+ * The heat map shades a working day by its value: the days off per day of leave of the best block of
+ * leave through it (see bestBlock in lib/calendar.ts). Up to 2 gains nothing worth showing and stays
+ * bare; a regular long weekend, worth 3 (a Monday or a Friday), takes the faintest step so that it does
+ * not crowd the map; up to 4 and up to 5 climb the ramp and more than 5 takes the hottest step.
  */
 export const HEAT_LEVELS = [0, 1, 2, 3, 4] as const;
 export type HeatLevel = (typeof HEAT_LEVELS)[number];
 
 export function heatLevel(value: number): HeatLevel {
-  if (value <= 1) return 0;
+  if (value <= 2) return 0;
   if (value <= 3) return 1;
-  return Math.min(4, value - 2) as HeatLevel;
+  if (value <= 4) return 2;
+  if (value <= 5) return 3;
+  return 4;
 }
 
 /** Tile and text colours per step, from the --heat-* tokens in index.css (light and dark each have their own ramp). */
@@ -24,7 +26,7 @@ export const HEAT_CLASS: Record<HeatLevel, string> = {
   4: 'bg-heat-4 text-heat-4-foreground',
 };
 
-const HEAT_LABEL: Record<HeatLevel, string> = { 0: '1', 1: '2–3', 2: '4', 3: '5', 4: '6+' };
+const HEAT_LABEL: Record<HeatLevel, string> = { 0: '≤2', 1: '3', 2: '4', 3: '5', 4: '6+' };
 
 /** The scale as a row of labelled swatches, for the header legend. */
 export function HeatLegend({ className }: { className?: string }) {
