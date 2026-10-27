@@ -38,6 +38,15 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* Heat map ramp: one green hue, light to dark, plus the text colour that reads on each step. */
+  --heat-1: oklch(0.88 0.1 150);
+  --heat-1-foreground: oklch(0.145 0 0);
+  --heat-2: oklch(0.76 0.16 150);
+  --heat-2-foreground: oklch(0.145 0 0);
+  --heat-3: oklch(0.62 0.16 150);
+  --heat-3-foreground: oklch(0.145 0 0);
+  --heat-4: oklch(0.46 0.11 150);
+  --heat-4-foreground: oklch(1 0 0);
 }
 
 .dark {
@@ -72,6 +81,15 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  /* The ramp flips on a dark surface: the hottest step is the brightest. */
+  --heat-1: oklch(0.38 0.09 150);
+  --heat-1-foreground: oklch(0.985 0 0);
+  --heat-2: oklch(0.5 0.13 150);
+  --heat-2-foreground: oklch(0.985 0 0);
+  --heat-3: oklch(0.63 0.16 150);
+  --heat-3-foreground: oklch(0.145 0 0);
+  --heat-4: oklch(0.8 0.19 150);
+  --heat-4-foreground: oklch(0.145 0 0);
 }
 
 @theme inline {
@@ -107,6 +125,14 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+  --color-heat-1: var(--heat-1);
+  --color-heat-1-foreground: var(--heat-1-foreground);
+  --color-heat-2: var(--heat-2);
+  --color-heat-2-foreground: var(--heat-2-foreground);
+  --color-heat-3: var(--heat-3);
+  --color-heat-3-foreground: var(--heat-3-foreground);
+  --color-heat-4: var(--heat-4);
+  --color-heat-4-foreground: var(--heat-4-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

@@ -1,5 +1,8 @@
 export type WeekStart = 'Monday' | 'Sunday';
 
+/** How the calendar draws its days: trip bands, or a heat map of how many days off in a row one day of leave buys. */
+export type CalendarView = 'calendar' | 'heatmap';
+
 export interface Trip {
   id: string; // 't' + Date.now().toString(36)
   name: string;
@@ -14,6 +17,7 @@ export interface Settings {
   region: string | null; // ISO 3166-2 subdivision from Nager's `counties` (e.g. 'GB-SCT'); null = nationwide days only
   weekStart: WeekStart; // default 'Monday'
   allowance: number; // 0–99, default 25
+  view: CalendarView; // default 'calendar'
 }
 
 export interface Stored {

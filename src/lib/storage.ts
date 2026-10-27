@@ -54,7 +54,7 @@ export function guessCountry(timeZone?: string, language?: string): string {
 }
 
 export function defaultSettings(): Settings {
-  return { holidays: true, country: guessCountry(), region: null, weekStart: 'Monday', allowance: 25 };
+  return { holidays: true, country: guessCountry(), region: null, weekStart: 'Monday', allowance: 25, view: 'calendar' };
 }
 
 function isTrip(v: unknown): v is Trip {
@@ -89,6 +89,7 @@ export function mergeSettings(saved: unknown): Settings {
     region,
     weekStart: s.weekStart === 'Sunday' || s.weekStart === 'Monday' ? s.weekStart : d.weekStart,
     allowance: typeof s.allowance === 'number' && Number.isFinite(s.allowance) ? Math.min(99, Math.max(0, Math.round(s.allowance))) : d.allowance,
+    view: s.view === 'heatmap' || s.view === 'calendar' ? s.view : d.view,
   };
 }
 

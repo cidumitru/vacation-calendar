@@ -221,6 +221,8 @@ export function App() {
             year={year}
             thisYear={THIS_YEAR}
             holidaysOn={settings.holidays}
+            view={settings.view}
+            onViewChange={(view) => patchSettings({ view })}
             onPrev={() => jumpTo(year - 1, true)}
             onNext={() => jumpTo(year + 1, true)}
             onToday={() => jumpTo(THIS_YEAR, true)}
@@ -240,7 +242,7 @@ export function App() {
               onChange={patchSettings}
             />
           </AppHeader>
-          <YearCalendar years={years} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} />
+          <YearCalendar years={years} view={settings.view} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} />
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>

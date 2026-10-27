@@ -40,6 +40,12 @@ describe('Settings merge and migration', () => {
     expect(s.allowance).toBe(99);
     expect(s.weekStart).toBe('Monday');
     expect(s.holidays).toBe(true);
+    expect(s.view).toBe('calendar');
+  });
+
+  it('keeps the heat map view and drops an unknown one', () => {
+    expect(mergeSettings({ view: 'heatmap' }).view).toBe('heatmap');
+    expect(mergeSettings({ view: 'table' }).view).toBe('calendar');
   });
 });
 
