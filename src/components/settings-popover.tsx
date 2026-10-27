@@ -57,7 +57,7 @@ export function SettingsPopover({ settings, year, countries, countriesStatus, re
       <PopoverTrigger asChild>
         <Button variant="outline">
           <Settings2Icon />
-          <span className="hidden sm:inline">Settings</span>
+          <span className="sr-only sm:not-sr-only">Settings</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[22rem] max-w-[calc(100vw-2rem)]">
