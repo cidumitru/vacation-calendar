@@ -1,6 +1,5 @@
 import { DAY_SHORT, MONTH_NAMES, eachDay, iso, isWeekend, yearOf } from './dates';
 import { EMPTY_LOOKUP, type HolidayLookup } from './holidays';
-import { hexA, tone } from './palette';
 import type { Settings, Trip } from './types';
 
 /** 'YYYY-MM-DD' → the trip that owns that day. */
@@ -37,16 +36,23 @@ export function draftRange(from: string, to: string): [string, string] {
   return [a, b];
 }
 
+/** What a day shows, strongest claim first: a trip, the draft, a public holiday, a weekend. */
+export type DayKind = 'trip' | 'draft' | 'holiday' | 'weekend' | 'plain';
+
 export interface DayCell {
   n: number;
   key: string;
-  bg: string;
-  cbg: string;
-  fg: string;
-  weight: 400 | 600;
-  radius: string;
-  dot: string | null;
-  holiday: string; // '' when none; shown by the custom tooltip, never a native title
+  kind: DayKind;
+  /** The trip's colour when kind is 'trip'. */
+  color: string | null;
+  /** First or last day of its trip or draft: drawn as a solid circle. */
+  end: boolean;
+  /** The draft's first click landed on this trip day and waits for a second click. */
+  picked: boolean;
+  /** The band continues from the previous day, or on to the next, within the week row. */
+  joinLeft: boolean;
+  joinRight: boolean;
+  holiday: string; // '' when none; shown in a tooltip and in the accessible name
   aria: string;
 }
 
@@ -55,7 +61,8 @@ export interface MonthModel {
   label: string;
   /** null = blank cell before the 1st */
   cells: (DayCell | null)[];
-  off: string;
+  /** Days off work spent in this month. */
+  off: number;
 }
 
 export interface YearModel {
@@ -73,8 +80,6 @@ export interface BuildContext {
   settings: Settings;
   lookup: HolidayLookup;
   sunFirst: boolean;
-  accent: string;
-  accentTint: string;
   pa: string;
   pb: string;
   dFrom: string;
@@ -86,26 +91,13 @@ export function buildContext(
   dFrom: string,
   dTo: string,
   settings: Settings,
-  accent: string,
   lookup: HolidayLookup = EMPTY_LOOKUP,
 ): BuildContext {
   const own = Array.isArray(trips) ? ownMap(trips) : trips;
   const [pa, pb] = draftRange(dFrom, dTo);
   const prev: Record<string, true> = {};
   if (pa) eachDay(pa, pb, (k) => { prev[k] = true; });
-  return {
-    own,
-    prev,
-    settings,
-    lookup,
-    sunFirst: settings.weekStart === 'Sunday',
-    accent,
-    accentTint: hexA(accent, 0.12),
-    pa,
-    pb,
-    dFrom,
-    dTo,
-  };
+  return { own, prev, settings, lookup, sunFirst: settings.weekStart === 'Sunday', pa, pb, dFrom, dTo };
 }
 
 interface DayInfo {
@@ -116,7 +108,8 @@ interface DayInfo {
   hol: string;
   t: Trip | undefined;
   pv: boolean;
-  kind: string;
+  /** Days with the same band key join into one pill across the week row. */
+  band: string;
   col: number;
 }
 
@@ -141,82 +134,56 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
       const hol = H[key] || '';
       const t = ctx.own[key];
       const pv = !t && !!ctx.prev[key];
-      const kind = t ? `t:${t.id}` : pv ? 'p' : hol ? 'h' : we ? 'w' : '';
-      info.push({ d, key, g, we, hol, t, pv, kind, col: (lead + d - 1) % 7 });
+      const band = t ? `t:${t.id}` : pv ? 'p' : hol ? 'h' : we ? 'w' : '';
+      info.push({ d, key, g, we, hol, t, pv, band, col: (lead + d - 1) % 7 });
     }
 
     const cells: (DayCell | null)[] = [];
     for (let k = 0; k < lead; k++) cells.push(null);
-    let mOff = 0;
+    let off = 0;
 
     info.forEach((c, ix) => {
       const free = c.we || !!c.hol;
       if (c.t && !free) {
-        mOff++;
+        off++;
         used++;
         offBy[c.t.id] = (offBy[c.t.id] || 0) + 1;
       }
       // Join bands of the same kind across the row (never across the week edge).
-      const jl = !!c.kind && c.col !== 0 && ix > 0 && info[ix - 1].kind === c.kind;
-      const jr = !!c.kind && c.col !== 6 && ix < info.length - 1 && info[ix + 1].kind === c.kind;
-      const r = (j: boolean) => (j ? '0' : '16px');
+      const joinLeft = !!c.band && c.col !== 0 && ix > 0 && info[ix - 1].band === c.band;
+      const joinRight = !!c.band && c.col !== 6 && ix < info.length - 1 && info[ix + 1].band === c.band;
 
-      let bg = 'transparent';
-      let cbg = 'transparent';
-      let fg = '#1D1D1F';
-      let weight: 400 | 600 = 400;
-      let dot: string | null = null;
-
+      let kind: DayKind = 'plain';
+      let end = false;
+      let picked = false;
       if (c.t) {
-        const tn = tone(c.t.color);
-        const end = c.key === c.t.from || c.key === c.t.to;
-        bg = tn.tint;
-        cbg = end ? c.t.color : 'transparent';
-        fg = end ? '#FFFFFF' : tn.ink;
-        weight = 600;
-        if (c.hol) dot = end ? '#FFFFFF' : tn.ink;
-        // A trip day that is the draft's first click, before a second click.
-        if (ctx.dFrom && !ctx.dTo && c.key === ctx.dFrom) {
-          cbg = '#1D1D1F';
-          fg = '#FFFFFF';
-          dot = null;
-        }
+        kind = 'trip';
+        end = c.key === c.t.from || c.key === c.t.to;
+        picked = !!ctx.dFrom && !ctx.dTo && c.key === ctx.dFrom;
       } else if (c.pv) {
-        const end = c.key === ctx.pa || c.key === ctx.pb;
-        bg = ctx.accentTint;
-        cbg = end ? ctx.accent : 'transparent';
-        fg = end ? '#FFFFFF' : '#1D1D1F';
-        weight = 600;
-        if (c.hol) dot = end ? '#FFFFFF' : '#B80014';
+        kind = 'draft';
+        end = c.key === ctx.pa || c.key === ctx.pb;
       } else if (c.hol) {
-        bg = 'rgba(255, 59, 48, 0.12)';
-        fg = '#B80014';
-        weight = 600;
+        kind = 'holiday';
       } else if (c.we) {
-        bg = 'rgba(118, 118, 128, 0.10)';
-        fg = '#636366';
+        kind = 'weekend';
       }
 
       cells.push({
         n: c.d,
         key: c.key,
-        bg,
-        cbg,
-        fg,
-        weight,
-        dot,
-        radius: `${r(jl)} ${r(jr)} ${r(jr)} ${r(jl)}`,
+        kind,
+        color: c.t?.color ?? null,
+        end,
+        picked,
+        joinLeft,
+        joinRight,
         holiday: c.hol,
         aria: `${DAY_SHORT[c.g]} ${c.d} ${name}${c.hol ? `, ${c.hol}` : ''}${c.t ? `, ${c.t.name}` : ''}`,
       });
     });
 
-    return {
-      name,
-      label: `${name} ${y}`,
-      cells,
-      off: mOff ? `${mOff} ${mOff === 1 ? 'day' : 'days'} off` : '',
-    };
+    return { name, label: `${name} ${y}`, cells, off };
   });
 
   return {

@@ -1,40 +1,25 @@
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type CSSProperties,
-  type FormEvent,
-  type UIEvent,
-} from 'react';
-import { Calendar } from './components/Calendar';
-import { SettingsPopover } from './components/SettingsPopover';
-import { Sidebar, type HintKind, type Segment, type TripRow } from './components/Sidebar';
-import { Toolbar } from './components/Toolbar';
-import { buildContext, buildYear, count, draftRange, ownMap, type YearModel } from './lib/calendar';
-import { daysBetween, eachDay, fmt, yearOf } from './lib/dates';
-import { countHolidays, regionsOf, toHolidayMap, type HolidayLookup, type HolidayMap } from './lib/holidays';
-import { holidayStore } from './lib/holidayStore';
-import { ACCENT, PALETTE, accentText, hexA } from './lib/palette';
-import { load, save } from './lib/storage';
-import type { Draft, Settings, Trip } from './lib/types';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from 'react';
+import { toast } from 'sonner';
+import { AppHeader } from '@/components/app-header';
+import { AppSidebar, type HintKind, type Segment, type TripRow } from '@/components/app-sidebar';
+import { SettingsPopover } from '@/components/settings-popover';
+import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { YearCalendar } from '@/components/year-calendar';
+import { useYearScroller } from '@/hooks/use-year-scroller';
+import { buildContext, buildYear, count, draftRange, ownMap, type YearModel } from '@/lib/calendar';
+import { daysBetween, eachDay, fmt, yearOf } from '@/lib/dates';
+import { countHolidays, regionsOf, toHolidayMap, type HolidayLookup, type HolidayMap } from '@/lib/holidays';
+import { holidayStore } from '@/lib/holidayStore';
+import { PALETTE } from '@/lib/palette';
+import { load, save } from '@/lib/storage';
+import type { Draft, Settings, Trip } from '@/lib/types';
 
-const START_YEAR = 2026;
 const MIN_YEAR = 1950;
 const MAX_YEAR = 2099;
-const EDGE = 500; // px from either end of the scroller that loads another year
+const THIS_YEAR = Math.min(MAX_YEAR, Math.max(MIN_YEAR, new Date().getFullYear()));
 const EMPTY_DRAFT: Draft = { name: '', from: '', to: '' };
-
-const reduceMotion = (): boolean => {
-  try {
-    return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  } catch {
-    return false;
-  }
-};
+const SIDEBAR_STYLE = { '--sidebar-width': '18rem' } as CSSProperties;
 
 export function App() {
   const [initial] = useState(() => load());
@@ -42,10 +27,8 @@ export function App() {
   const [settings, setSettings] = useState<Settings>(initial.settings);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [err, setErr] = useState('');
-  const [year, setYear] = useState(START_YEAR);
-  const [yFrom, setYFrom] = useState(START_YEAR - 1);
-  const [yTo, setYTo] = useState(START_YEAR + 1);
-  const [showSettings, setShowSettings] = useState(false);
+  const scroller = useYearScroller(THIS_YEAR, MIN_YEAR, MAX_YEAR);
+  const { year, yFrom, yTo, jumpTo } = scroller;
 
   // ---- Persistence: write after every change to trips or settings (not on first load).
   const loadedRef = useRef(false);
@@ -86,9 +69,9 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.holidays, settings.country, settings.region, holidayVersion]);
 
-  // ---- Year models, cached until trips, the draft, settings, holiday data or the accent change.
+  // ---- Year models, cached until trips, the draft, settings or holiday data change.
   const own = useMemo(() => ownMap(trips), [trips]);
-  const ctx = useMemo(() => buildContext(own, draft.from, draft.to, settings, ACCENT, lookup), [own, draft.from, draft.to, settings, lookup]);
+  const ctx = useMemo(() => buildContext(own, draft.from, draft.to, settings, lookup), [own, draft.from, draft.to, settings, lookup]);
   const cacheRef = useRef<{ ctx: typeof ctx; years: Map<number, YearModel> } | null>(null);
   if (!cacheRef.current || cacheRef.current.ctx !== ctx) cacheRef.current = { ctx, years: new Map() };
   const cache = cacheRef.current.years;
@@ -104,116 +87,12 @@ export function App() {
   for (let y = yFrom; y <= yTo; y++) years.push(yearModel(y));
   const cur = yearModel(year);
 
-  // ---- Scrolling: endless years, anchored prepends, year-in-view sync, stepper jumps.
-  const scRef = useRef<HTMLDivElement>(null);
-  const busyRef = useRef(false);
-  const jumpingRef = useRef(false);
-  const jumpTimer = useRef<number | undefined>(undefined);
-  const anchorRef = useRef<{ h: number; t: number } | null>(null);
-  const jumpRef = useRef<{ y: number; smooth: boolean } | null>(null);
-  const initTopRef = useRef<number | null>(null);
-
-  const setJumping = (ms: number) => {
-    jumpingRef.current = true;
-    window.clearTimeout(jumpTimer.current);
-    jumpTimer.current = window.setTimeout(() => {
-      jumpingRef.current = false;
-    }, ms);
-  };
-
-  useLayoutEffect(() => {
-    const el = scRef.current;
-    if (!el) return;
-    const go = () => {
-      const sec = el.querySelector<HTMLElement>(`[data-year="${START_YEAR}"]`);
-      if (!sec) return;
-      setJumping(300);
-      el.scrollTop = sec.offsetTop;
-      initTopRef.current = el.scrollTop;
-    };
-    go();
-    let cancelled = false;
-    try {
-      // Re-apply once webfonts load, unless the person has already scrolled.
-      document.fonts?.ready.then(() => {
-        if (!cancelled && initTopRef.current != null && el.scrollTop === initTopRef.current) go();
-      });
-    } catch {
-      /* no Font Loading API */
-    }
-    return () => {
-      cancelled = true;
-      window.clearTimeout(jumpTimer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useLayoutEffect(() => {
-    const el = scRef.current;
-    if (!el) return;
-    if (anchorRef.current) {
-      // A year was prepended: keep the view still.
-      el.scrollTop = anchorRef.current.t + (el.scrollHeight - anchorRef.current.h);
-      anchorRef.current = null;
-    }
-    busyRef.current = false;
-    if (jumpRef.current) {
-      const sec = el.querySelector<HTMLElement>(`[data-year="${jumpRef.current.y}"]`);
-      if (sec) {
-        const behavior = jumpRef.current.smooth && !reduceMotion() ? 'smooth' : 'auto';
-        try {
-          el.scrollTo({ top: sec.offsetTop, behavior });
-        } catch {
-          el.scrollTop = sec.offsetTop;
-        }
-      }
-      jumpRef.current = null;
-    }
-  });
-
-  const syncActive = (el: HTMLDivElement) => {
-    if (jumpingRef.current) return;
-    const secs = el.querySelectorAll<HTMLElement>('[data-year]');
-    const line = el.getBoundingClientRect().top + Math.min(160, el.clientHeight * 0.3);
-    let act: number | null = null;
-    secs.forEach((s) => {
-      if (s.getBoundingClientRect().top <= line) act = Number(s.dataset.year);
-    });
-    if (act == null && secs.length) act = Number(secs[0].dataset.year);
-    if (act != null && act !== year) setYear(act);
-  };
-
-  const onScroll = (e: UIEvent<HTMLDivElement>) => {
-    const el = e.currentTarget;
-    syncActive(el);
-    if (busyRef.current || jumpingRef.current) return;
-    if (el.scrollTop < EDGE && yFrom > MIN_YEAR) {
-      busyRef.current = true;
-      anchorRef.current = { h: el.scrollHeight, t: el.scrollTop };
-      setYFrom(yFrom - 1);
-    } else if (el.scrollTop + el.clientHeight > el.scrollHeight - EDGE && yTo < MAX_YEAR) {
-      busyRef.current = true;
-      setYTo(yTo + 1);
-    }
-  };
-
-  const jumpTo = (y: number, smooth: boolean) => {
-    if (y < MIN_YEAR || y > MAX_YEAR) return;
-    let prepended = false;
-    if (y - 1 < yFrom) {
-      setYFrom(Math.max(MIN_YEAR, y - 1));
-      prepended = true;
-    }
-    if (y + 1 > yTo) setYTo(Math.min(MAX_YEAR, y + 1));
-    setYear(y);
-    jumpRef.current = { y, smooth: smooth && !prepended };
-    setJumping(900);
-  };
-
   // ---- Draft and trips.
-  const onDraftChange = (patch: Partial<Draft>) => {
-    setDraft((d) => ({ ...d, ...patch }));
-    if (patch.from !== undefined || patch.to !== undefined) setErr('');
+  const setName = (name: string) => setDraft((d) => ({ ...d, name }));
+
+  const setRange = (from: string, to: string) => {
+    setDraft((d) => ({ ...d, from, to }));
+    setErr('');
   };
 
   const clearDraft = () => {
@@ -259,16 +138,20 @@ export function App() {
     if (ty !== year) jumpTo(ty, true);
   };
 
-  const removeTrip = (id: string) => setTrips((ts) => ts.filter((t) => t.id !== id));
+  const removeTrip = (id: string) => {
+    const trip = trips.find((t) => t.id === id);
+    if (!trip) return;
+    setTrips((ts) => ts.filter((t) => t.id !== id));
+    toast(`Removed “${trip.name}”`, {
+      action: {
+        label: 'Undo',
+        onClick: () => setTrips((ts) => (ts.some((t) => t.id === trip.id) ? ts : [...ts, trip])),
+      },
+    });
+  };
 
   // ---- Settings.
   const patchSettings = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
-  const settingsButtonRef = useRef<HTMLButtonElement>(null);
-  const closeSettings = useCallback(() => {
-    setShowSettings(false);
-    settingsButtonRef.current?.focus();
-  }, []);
-  const toggleSettings = () => setShowSettings((v) => !v);
 
   // ---- Derived view values for the year in view.
   let hint = 'Or click a first and a last day in the calendar.';
@@ -286,6 +169,7 @@ export function App() {
     hint = `${day(pa)}${pb !== pa ? ` → ${day(pb)}` : ''} · ${c.all} ${c.all === 1 ? 'day' : 'days'}, ${c.off} off work`;
     hintKind = 'draft';
   }
+  const dateText = pa ? `${fmt(pa, year)}${pb !== pa ? ` – ${fmt(pb, year)}` : ''}` : 'Pick dates';
 
   const yA = `${year}-01-01`;
   const yB = `${year}-12-31`;
@@ -298,6 +182,7 @@ export function App() {
       id: t.id,
       name: t.name,
       color: t.color,
+      from: t.from,
       range: fmt(t.from, year) + (t.to !== t.from ? ` – ${fmt(t.to, year)}` : ''),
       off: `${n} ${n === 1 ? 'day' : 'days'}`,
     };
@@ -307,58 +192,57 @@ export function App() {
     .filter((t) => cur.offBy[t.id])
     .map((t) => ({ width: `${((cur.offBy[t.id] / total) * 100).toFixed(2)}%`, color: t.color }));
 
-  const accentVars = {
-    '--accent': ACCENT,
-    '--accent-text': accentText(ACCENT),
-    '--preview-band': hexA(ACCENT, 0.12),
-  } as CSSProperties;
-
   return (
-    <div className="app" style={accentVars}>
-      <Sidebar
-        year={year}
-        allowance={settings.allowance}
-        used={cur.used}
-        holidaysOn={settings.holidays}
-        segments={segments}
-        draft={draft}
-        onDraftChange={onDraftChange}
-        onClear={clearDraft}
-        onAdd={addTrip}
-        hint={hint}
-        hintKind={hintKind}
-        trips={rows}
-        onRemove={removeTrip}
-      />
-      <main className="main">
-        <Toolbar
+    <TooltipProvider delayDuration={300}>
+      <SidebarProvider style={SIDEBAR_STYLE}>
+        <AppSidebar
           year={year}
-          onPrev={() => jumpTo(year - 1, true)}
-          onNext={() => jumpTo(year + 1, true)}
+          minYear={MIN_YEAR}
+          maxYear={MAX_YEAR}
+          allowance={settings.allowance}
+          used={cur.used}
           holidaysOn={settings.holidays}
-          settingsOpen={showSettings}
-          onToggleSettings={toggleSettings}
-          settingsButtonRef={settingsButtonRef}
+          weekStart={settings.weekStart}
+          segments={segments}
+          draft={draft}
+          dateText={dateText}
+          onNameChange={setName}
+          onRangeChange={setRange}
+          onClear={clearDraft}
+          onAdd={addTrip}
+          hint={hint}
+          hintKind={hintKind}
+          trips={rows}
+          onRemove={removeTrip}
+          onJump={(from) => jumpTo(yearOf(from), true)}
         />
-        <Calendar ref={scRef} years={years} onScroll={onScroll} onTapDay={tapDay} />
-        {showSettings && (
-          <SettingsPopover
-            settings={settings}
+        <SidebarInset className="h-svh overflow-hidden md:h-[calc(100svh-1rem)]">
+          <AppHeader
             year={year}
-            countries={holidayStore.getCountries()}
-            countriesStatus={holidayStore.countriesStatus()}
-            regions={regionsOf(holidayStore.get(settings.country, year) ?? [])}
-            holidayCount={countHolidays(lookup(year))}
-            status={holidayStore.status(settings.country, year)}
-            onRetry={() => {
-              holidayStore.retry(settings.country, year);
-              holidayStore.retryCountries();
-            }}
-            onChange={patchSettings}
-            onClose={closeSettings}
-          />
-        )}
-      </main>
-    </div>
+            thisYear={THIS_YEAR}
+            holidaysOn={settings.holidays}
+            onPrev={() => jumpTo(year - 1, true)}
+            onNext={() => jumpTo(year + 1, true)}
+            onToday={() => jumpTo(THIS_YEAR, true)}
+          >
+            <SettingsPopover
+              settings={settings}
+              year={year}
+              countries={holidayStore.getCountries()}
+              countriesStatus={holidayStore.countriesStatus()}
+              regions={regionsOf(holidayStore.get(settings.country, year) ?? [])}
+              holidayCount={countHolidays(lookup(year))}
+              status={holidayStore.status(settings.country, year)}
+              onRetry={() => {
+                holidayStore.retry(settings.country, year);
+                holidayStore.retryCountries();
+              }}
+              onChange={patchSettings}
+            />
+          </AppHeader>
+          <YearCalendar years={years} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} />
+        </SidebarInset>
+      </SidebarProvider>
+    </TooltipProvider>
   );
 }

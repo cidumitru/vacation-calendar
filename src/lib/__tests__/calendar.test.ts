@@ -10,7 +10,7 @@ const ro2026 = toHolidayMap(RO_2026, null, 2026);
 // 2027: only New Year’s Day matters for the cross-year test below.
 const ro2027 = { '2027-01-01': 'New Year’s Day' };
 const lookup: HolidayLookup = (y) => (y === 2026 ? ro2026 : y === 2027 ? ro2027 : {});
-const ctxOf = (trips: Trip[], from = '', to = '', s: Settings = RO) => buildContext(trips, from, to, s, '#0071E3', lookup);
+const ctxOf = (trips: Trip[], from = '', to = '', s: Settings = RO) => buildContext(trips, from, to, s, lookup);
 
 describe('Counting days off', () => {
   it('seeds with Romania and 25 days give 17 planned and 8 left in 2026', () => {
@@ -44,28 +44,26 @@ describe('Counting days off', () => {
 
   it('month header counts the cost inside that month', () => {
     const year = buildYear(2026, ctxOf(SEED_TRIPS));
-    expect(year.months[6].off).toBe('10 days off'); // Summer: 18 Jul – 2 Aug, July part
-    expect(year.months[7].off).toBe(''); // Sat 1 – Sun 2 Aug cost nothing
-    expect(year.months[1].off).toBe('5 days off');
+    expect(year.months[6].off).toBe(10); // Summer: 18 Jul – 2 Aug, July part
+    expect(year.months[7].off).toBe(0); // Sat 1 – Sun 2 Aug cost nothing
+    expect(year.months[1].off).toBe(5);
   });
 
   it('rebuilds the cost once holiday data arrives', () => {
     const trips: Trip[] = [{ id: 'x', name: 'Xmas', from: '2026-12-21', to: '2026-12-25', color: '#0A7D8C' }];
-    expect(buildYear(2026, buildContext(trips, '', '', RO, '#0071E3', EMPTY_LOOKUP)).used).toBe(5);
+    expect(buildYear(2026, buildContext(trips, '', '', RO, EMPTY_LOOKUP)).used).toBe(5);
     expect(buildYear(2026, ctxOf(trips)).used).toBe(4);
   });
 });
 
 describe('Day cell states', () => {
-  it('marks trip ends with a solid circle and middles with ink', () => {
+  it('marks trip ends as solid circles and middles as band days in the trip colour', () => {
     const year = buildYear(2026, ctxOf(SEED_TRIPS));
     const feb = year.months[1];
     const c16 = feb.cells.find((c) => c?.key === '2026-02-16')!;
     const c18 = feb.cells.find((c) => c?.key === '2026-02-18')!;
-    expect(c16.cbg).toBe('#0A7D8C');
-    expect(c16.fg).toBe('#FFFFFF');
-    expect(c18.cbg).toBe('transparent');
-    expect(c18.fg).toBe('#075E69');
+    expect(c16).toMatchObject({ kind: 'trip', end: true, picked: false, color: '#0A7D8C' });
+    expect(c18).toMatchObject({ kind: 'trip', end: false, color: '#0A7D8C' });
     expect(c16.aria).toBe('Mon 16 February, Winter break');
   });
 
@@ -74,19 +72,22 @@ describe('Day cell states', () => {
     const jun1 = year.months[5].cells.find((c) => c?.key === '2026-06-01')!;
     expect(jun1.holiday).toBe('Children’s Day · Whit Monday');
     expect(jun1.aria).toBe('Mon 1 June, Children’s Day · Whit Monday');
-    expect(jun1.fg).toBe('#B80014');
+    expect(jun1.kind).toBe('holiday');
   });
 
   it('joins bands within a week row and breaks them at the week edge', () => {
     const year = buildYear(2026, ctxOf(SEED_TRIPS));
     const feb = year.months[1];
-    const cell = (k: string) => feb.cells.find((c) => c?.key === k)!;
-    expect(cell('2026-02-16').radius).toBe('16px 0 0 16px'); // Monday, first column
-    expect(cell('2026-02-18').radius).toBe('0 0 0 0');
-    expect(cell('2026-02-20').radius).toBe('0 16px 16px 0'); // Friday, trip ends
+    const joins = (k: string) => {
+      const c = feb.cells.find((x) => x?.key === k)!;
+      return [c.joinLeft, c.joinRight];
+    };
+    expect(joins('2026-02-16')).toEqual([false, true]); // Monday, first column
+    expect(joins('2026-02-18')).toEqual([true, true]);
+    expect(joins('2026-02-20')).toEqual([true, false]); // Friday, trip ends
     // Weekend Sat+Sun join when weeks start on Monday
-    expect(cell('2026-02-21').radius).toBe('16px 0 0 16px');
-    expect(cell('2026-02-22').radius).toBe('0 16px 16px 0');
+    expect(joins('2026-02-21')).toEqual([false, true]);
+    expect(joins('2026-02-22')).toEqual([true, false]);
   });
 
   it('Sunday week start moves the blank lead cells', () => {
@@ -99,14 +100,14 @@ describe('Day cell states', () => {
     expect(mon.weekdays[0]).toBe('M');
   });
 
-  it('shows the draft with the accent and a black circle on a trip day first click', () => {
+  it('shows the draft as its own band and flags a first click on a trip day', () => {
     const mar = buildYear(2026, ctxOf(SEED_TRIPS, '2026-03-06', '2026-03-10')).months[2];
     const c6 = mar.cells.find((c) => c?.key === '2026-03-06')!;
     const c8 = mar.cells.find((c) => c?.key === '2026-03-08')!;
-    expect(c6.cbg).toBe('#0071E3');
-    expect(c8.bg).toBe('rgba(0, 113, 227, 0.12)');
+    expect(c6).toMatchObject({ kind: 'draft', end: true, color: null });
+    expect(c8).toMatchObject({ kind: 'draft', end: false });
     const c17 = buildYear(2026, ctxOf(SEED_TRIPS, '2026-02-17')).months[1].cells.find((c) => c?.key === '2026-02-17')!;
-    expect(c17.cbg).toBe('#1D1D1F');
+    expect(c17).toMatchObject({ kind: 'trip', picked: true });
   });
 
   it('normalises a reversed draft range', () => {
