@@ -1,5 +1,5 @@
 import { memo, type CSSProperties, type RefObject, type UIEvent } from 'react';
-import { HEAT_CLASS, heatLevel } from '@/components/heat-scale';
+import { HEAT_CLASS, HEAT_FREE_CLASS, heatLevel } from '@/components/heat-scale';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { DayCell, DayKind, MonthModel, YearModel } from '@/lib/calendar';
@@ -184,7 +184,11 @@ function heated(c: DayCell | null | undefined): boolean {
   return !!c && c.kind !== 'trip' && c.kind !== 'draft' && heatLevel(c.heat) > 0;
 }
 
-/** Free days and trips keep their calendar colours where no heat reaches; the range being picked is outlined over whatever it covers. */
+/**
+ * Working days wear their step; the weekends and holidays inside a break wear its darker shade, so a band shows which
+ * days cost leave. Free days and trips keep their calendar colours where no heat reaches; the range being picked is
+ * outlined over whatever it covers.
+ */
 function tileClass(c: DayCell): string {
   if (c.picked || (c.kind === 'draft' && c.end)) return 'bg-foreground font-semibold text-background';
   const level = heatLevel(c.heat);
@@ -192,11 +196,12 @@ function tileClass(c: DayCell): string {
     case 'trip':
       return 'trip-solid font-semibold';
     case 'holiday':
-      return cn(level ? HEAT_CLASS[level] : HOLIDAY_TILE, 'font-semibold');
+      return cn(level ? HEAT_FREE_CLASS[level] : HOLIDAY_TILE, 'font-semibold');
     case 'weekend':
-      return level ? HEAT_CLASS[level] : 'bg-muted text-muted-foreground';
+      return level ? HEAT_FREE_CLASS[level] : 'bg-muted text-muted-foreground';
     case 'draft':
-      return cn('inset-ring-2 inset-ring-foreground font-semibold', level ? HEAT_CLASS[level] : c.holiday ? HOLIDAY_TILE : 'bg-muted');
+      // value > 0 marks a working day; a free day under the draft keeps the darker shade.
+      return cn('inset-ring-2 inset-ring-foreground font-semibold', level ? (c.value > 0 ? HEAT_CLASS[level] : HEAT_FREE_CLASS[level]) : c.holiday ? HOLIDAY_TILE : 'bg-muted');
     default:
       return HEAT_CLASS[level];
   }

@@ -27,6 +27,15 @@ export const HEAT_CLASS: Record<HeatLevel, string> = {
   4: 'bg-heat-4 text-heat-4-foreground',
 };
 
+/** The same steps for the weekends and holidays inside a break: darker and duller, so the days to take stand out from the days already free. */
+export const HEAT_FREE_CLASS: Record<HeatLevel, string> = {
+  0: '',
+  1: 'bg-heat-1-free text-heat-1-free-foreground',
+  2: 'bg-heat-2-free text-heat-2-free-foreground',
+  3: 'bg-heat-3-free text-heat-3-free-foreground',
+  4: 'bg-heat-4-free text-heat-4-free-foreground',
+};
+
 const HEAT_LABEL: Record<HeatLevel, string> = { 0: '', 1: '3', 2: '4', 3: '5', 4: '6+' };
 
 /** The scale as a row of labelled swatches, for the header legend. */
