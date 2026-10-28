@@ -7,6 +7,7 @@ import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSep
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { LoadStatus } from '@/lib/holidayStore';
 import type { NagerCountry } from '@/lib/nager';
@@ -63,7 +64,7 @@ export function SettingsPopover({ settings, year, countries, countriesStatus, re
       <PopoverContent align="end" className="w-[22rem] max-w-[calc(100vw-2rem)]">
         <PopoverHeader>
           <PopoverTitle>Settings</PopoverTitle>
-          <PopoverDescription>Public holidays, week start and your yearly allowance.</PopoverDescription>
+          <PopoverDescription>Public holidays, week start, your yearly allowance and the appearance.</PopoverDescription>
         </PopoverHeader>
 
         <FieldGroup className="gap-5">
@@ -161,6 +162,14 @@ export function SettingsPopover({ settings, year, countries, countriesStatus, re
                 <PlusIcon />
               </Button>
             </ButtonGroup>
+          </Field>
+
+          <FieldSeparator />
+
+          <Field>
+            <FieldLabel id="settings-appearance">Appearance</FieldLabel>
+            <ThemeToggle labelledBy="settings-appearance" />
+            <FieldDescription>System follows your device.</FieldDescription>
           </Field>
         </FieldGroup>
 
