@@ -1,5 +1,5 @@
 import { memo, type CSSProperties, type RefObject, type UIEvent } from 'react';
-import { HEAT_CLASS, heatLevel } from '@/components/heat-scale';
+import { HEAT_CLASS, HEAT_FREE_CLASS, heatLevel } from '@/components/heat-scale';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { DayCell, DayKind, MonthModel, YearModel } from '@/lib/calendar';
@@ -62,7 +62,7 @@ interface MonthProps {
 }
 
 function Month({ model, index, weekdays, view, onTapDay }: MonthProps) {
-  const Cell = view === 'heatmap' ? HeatDay : Day;
+  const heat = view === 'heatmap';
   return (
     <section data-month={index} aria-label={model.label} className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2 px-1">
@@ -79,7 +79,16 @@ function Month({ model, index, weekdays, view, onTapDay }: MonthProps) {
         ))}
       </div>
       <div className="grid grid-cols-7 gap-y-0.5">
-        {model.cells.map((c, i) => (c ? <Cell key={c.key} cell={c} onTapDay={onTapDay} /> : <span key={`b${i}`} className="h-8" aria-hidden="true" />))}
+        {model.cells.map((c, i) => {
+          if (!c) return <span key={`b${i}`} className="h-8" aria-hidden="true" />;
+          if (!heat) return <Day key={c.key} cell={c} onTapDay={onTapDay} />;
+          // Heat bands join across the row like the calendar bands; a day no heat reaches keeps its own band's joins.
+          const col = i % 7;
+          const band = heated(c);
+          const joinLeft = band ? col > 0 && heated(model.cells[i - 1]) : !!JOINS[c.kind] && c.joinLeft;
+          const joinRight = band ? col < 6 && heated(model.cells[i + 1]) : !!JOINS[c.kind] && c.joinRight;
+          return <HeatDay key={c.key} cell={c} joinLeft={joinLeft} joinRight={joinRight} onTapDay={onTapDay} />;
+        })}
       </div>
     </section>
   );
@@ -161,40 +170,53 @@ function Day({ cell, onTapDay }: DayProps) {
   );
 }
 
-// ---- Heat map view: the calendar view's bands drawn as tiles, with every working day shaded by its value
-// (the days off in a row one day of leave buys there). A day worth 1 stays bare.
+// ---- Heat map view: the calendar view's bands drawn as tiles. Every working day is shaded by its value (the
+// days off per day of leave of its best block) and every free day by the strongest break that covers it, so a
+// whole vacation reads as one band.
 
-/** Which bands still join across the row: heat tiles are one day each, and so is the outline of the draft. */
+/** Bands of the calendar view that still join on their own where no heat reaches them. */
 const JOINS: Partial<Record<DayKind, true>> = { trip: true, weekend: true, holiday: true };
 
 const HOLIDAY_TILE = 'bg-destructive/10 text-destructive dark:bg-destructive/20';
 
-/** Free days and trips keep their calendar colours; the range being picked is outlined over whatever it covers. */
+/** Part of a heat band: a working or free day with heat, as opposed to a trip or the draft. */
+function heated(c: DayCell | null | undefined): boolean {
+  return !!c && c.kind !== 'trip' && c.kind !== 'draft' && heatLevel(c.heat) > 0;
+}
+
+/**
+ * Working days wear their step; the weekends and holidays inside a break wear its darker shade, so a band shows which
+ * days cost leave. Free days and trips keep their calendar colours where no heat reaches; the range being picked is
+ * outlined over whatever it covers.
+ */
 function tileClass(c: DayCell): string {
   if (c.picked || (c.kind === 'draft' && c.end)) return 'bg-foreground font-semibold text-background';
+  const level = heatLevel(c.heat);
   switch (c.kind) {
     case 'trip':
       return 'trip-solid font-semibold';
     case 'holiday':
-      return cn(HOLIDAY_TILE, 'font-semibold');
+      return cn(level ? HEAT_FREE_CLASS[level] : HOLIDAY_TILE, 'font-semibold');
     case 'weekend':
-      return 'bg-muted text-muted-foreground';
+      return level ? HEAT_FREE_CLASS[level] : 'bg-muted text-muted-foreground';
     case 'draft':
-      return cn('inset-ring-2 inset-ring-foreground font-semibold', c.value > 0 ? HEAT_CLASS[heatLevel(c.value)] : c.holiday ? HOLIDAY_TILE : 'bg-muted');
+      // value > 0 marks a working day; a free day under the draft keeps the darker shade.
+      return cn('inset-ring-2 inset-ring-foreground font-semibold', level ? (c.value > 0 ? HEAT_CLASS[level] : HEAT_FREE_CLASS[level]) : c.holiday ? HOLIDAY_TILE : 'bg-muted');
     default:
-      return HEAT_CLASS[heatLevel(c.value)];
+      return HEAT_CLASS[level];
   }
 }
 
-/** A public holiday under a solid tile keeps a dot; elsewhere its red number already says so. */
+/** A public holiday under a solid or heated tile keeps a dot; elsewhere its red number already says so. */
 function tileDotClass(c: DayCell): string | null {
   if (!c.holiday) return null;
   if (c.picked || (c.kind === 'draft' && c.end)) return 'bg-destructive';
   if (c.kind === 'trip') return 'bg-white';
+  if (heatLevel(c.heat) > 0) return 'bg-current';
   return null;
 }
 
-/** "9 days off for 3 days of leave, Wed 2 Dec – Fri 4 Dec": the best block through a shaded day. */
+/** "9 days off for 3 days of leave, Wed 2 Dec – Fri 4 Dec": the best block through a shaded working day. */
 function gainText(c: DayCell): string {
   if (!c.best || heatLevel(c.value) === 0) return '';
   const { off, leave, from, to } = c.best;
@@ -202,12 +224,15 @@ function gainText(c: DayCell): string {
   return `${off} days off for ${leave} ${leave === 1 ? 'day' : 'days'} of leave${leave > 1 ? `, ${fmt(from, y)} – ${fmt(to, y)}` : ''}`;
 }
 
-function HeatDay({ cell, onTapDay }: DayProps) {
+interface HeatDayProps extends DayProps {
+  joinLeft: boolean;
+  joinRight: boolean;
+}
+
+function HeatDay({ cell, joinLeft, joinRight, onTapDay }: HeatDayProps) {
   const gain = cell.kind !== 'trip' ? gainText(cell) : '';
   const tip = cell.holiday || gain;
   const dot = tileDotClass(cell);
-  const joinLeft = !!JOINS[cell.kind] && cell.joinLeft;
-  const joinRight = !!JOINS[cell.kind] && cell.joinRight;
   const button = (
     <button
       type="button"

@@ -47,6 +47,15 @@
   --heat-3-foreground: oklch(0.145 0 0);
   --heat-4: oklch(0.5 0.16 40);
   --heat-4-foreground: oklch(1 0 0);
+  /* The same steps for the weekends and holidays inside a break: darker and duller, so the days to take stand out. */
+  --heat-1-free: oklch(0.78 0.055 62);
+  --heat-1-free-foreground: oklch(0.145 0 0);
+  --heat-2-free: oklch(0.69 0.1 56);
+  --heat-2-free-foreground: oklch(0.145 0 0);
+  --heat-3-free: oklch(0.59 0.14 46);
+  --heat-3-free-foreground: oklch(0.145 0 0);
+  --heat-4-free: oklch(0.4 0.12 38);
+  --heat-4-free-foreground: oklch(1 0 0);
 }
 
 .dark {
@@ -88,8 +97,16 @@
   --heat-2-foreground: oklch(0.145 0 0);
   --heat-3: oklch(0.7 0.17 52);
   --heat-3-foreground: oklch(0.145 0 0);
-  --heat-4: oklch(0.82 0.14 65);
+  --heat-4: oklch(0.82 0.13 65);
   --heat-4-foreground: oklch(0.145 0 0);
+  --heat-1-free: oklch(0.31 0.07 45);
+  --heat-1-free-foreground: oklch(0.985 0 0);
+  --heat-2-free: oklch(0.47 0.11 47);
+  --heat-2-free-foreground: oklch(0.985 0 0);
+  --heat-3-free: oklch(0.59 0.13 50);
+  --heat-3-free-foreground: oklch(0.145 0 0);
+  --heat-4-free: oklch(0.66 0.12 60);
+  --heat-4-free-foreground: oklch(0.145 0 0);
 }
 
 @theme inline {
@@ -133,6 +150,14 @@
   --color-heat-3-foreground: var(--heat-3-foreground);
   --color-heat-4: var(--heat-4);
   --color-heat-4-foreground: var(--heat-4-foreground);
+  --color-heat-1-free: var(--heat-1-free);
+  --color-heat-1-free-foreground: var(--heat-1-free-foreground);
+  --color-heat-2-free: var(--heat-2-free);
+  --color-heat-2-free-foreground: var(--heat-2-free-foreground);
+  --color-heat-3-free: var(--heat-3-free);
+  --color-heat-3-free-foreground: var(--heat-3-free-foreground);
+  --color-heat-4-free: var(--heat-4-free);
+  --color-heat-4-free-foreground: var(--heat-4-free-foreground);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
