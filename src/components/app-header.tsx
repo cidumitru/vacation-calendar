@@ -1,4 +1,4 @@
-import { CalendarCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon } from 'lucide-react';
+import { CalendarCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, PanelRightIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { HeatLegend } from '@/components/heat-scale';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -19,6 +19,10 @@ interface Props {
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+  /** The insights panel: open beside the calendar, or as a sheet on phones. */
+  insightsOpen: boolean;
+  insightsId: string;
+  onToggleInsights: () => void;
   /** Extra controls at the right end, before the theme toggle. */
   children?: ReactNode;
 }
@@ -70,6 +74,17 @@ export function AppHeader(p: Props) {
         </Toggle>
         {p.children}
         <ThemeToggle />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="-mr-1"
+          aria-label="Toggle insights"
+          aria-expanded={p.insightsOpen}
+          aria-controls={p.insightsId}
+          onClick={p.onToggleInsights}
+        >
+          <PanelRightIcon className="rtl:rotate-180" />
+        </Button>
       </div>
     </header>
   );

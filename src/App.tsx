@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { AppSidebar, type HintKind, type Segment, type TripRow } from '@/components/app-sidebar';
+import { dealText, plural } from '@/components/insights-bits';
+import { INSIGHTS_ID, InsightsPanel, loadProto, saveProto, type InsightsProto } from '@/components/insights-panel';
 import { SettingsPopover } from '@/components/settings-popover';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -9,9 +11,10 @@ import { YearCalendar } from '@/components/year-calendar';
 import { isMobileViewport, useIsMobile } from '@/hooks/use-mobile';
 import { useYearScroller } from '@/hooks/use-year-scroller';
 import { buildContext, buildYear, count, draftRange, ownMap, type YearModel } from '@/lib/calendar';
-import { daysBetween, eachDay, fmt, yearOf } from '@/lib/dates';
+import { daysBetween, eachDay, fmt, iso, yearOf } from '@/lib/dates';
 import { countHolidays, regionsOf, toHolidayMap, type HolidayLookup, type HolidayMap } from '@/lib/holidays';
 import { holidayStore } from '@/lib/holidayStore';
+import { buildInsights, clusterName, type Suggestion } from '@/lib/insights';
 import { PALETTE } from '@/lib/palette';
 import { load, save } from '@/lib/storage';
 import type { Draft, Settings, Trip } from '@/lib/types';
@@ -21,8 +24,9 @@ const MAX_YEAR = 2099;
 const TODAY = new Date();
 const THIS_YEAR = Math.min(MAX_YEAR, Math.max(MIN_YEAR, TODAY.getFullYear()));
 const THIS_MONTH = TODAY.getMonth();
+const TODAY_KEY = iso(TODAY.getFullYear(), THIS_MONTH, TODAY.getDate());
 const EMPTY_DRAFT: Draft = { name: '', from: '', to: '' };
-const SIDEBAR_STYLE = { '--sidebar-width': '18rem' } as CSSProperties;
+const SIDEBAR_STYLE = { '--sidebar-width': '18rem', '--insights-width': '20rem' } as CSSProperties;
 
 export function App() {
   const [initial] = useState(() => load());
@@ -37,6 +41,16 @@ export function App() {
   const { year, month, yFrom, yTo, jumpTo } = scroller;
   const atToday = year === THIS_YEAR && (!isMobile || month === THIS_MONTH);
   const goToday = () => jumpTo(THIS_YEAR, true, isMobile ? THIS_MONTH : undefined);
+
+  // ---- The insights panel: open beside the calendar on wider screens, a sheet on phones; two prototypes of its content.
+  const [insightsOpen, setInsightsOpen] = useState(true);
+  const [insightsMobile, setInsightsMobile] = useState(false);
+  const [proto, setProto] = useState<InsightsProto>(loadProto);
+  const changeProto = (p: InsightsProto) => {
+    setProto(p);
+    saveProto(p);
+  };
+  const toggleInsights = () => (isMobile ? setInsightsMobile((v) => !v) : setInsightsOpen((v) => !v));
 
   // ---- Persistence: write after every change to trips or settings (not on first load).
   const loadedRef = useRef(false);
@@ -94,6 +108,7 @@ export function App() {
   const years: YearModel[] = [];
   for (let y = yFrom; y <= yTo; y++) years.push(yearModel(y));
   const cur = yearModel(year);
+  const insights = useMemo(() => buildInsights(cur, ctx), [cur, ctx]);
 
   // ---- Draft and trips.
   const setName = (name: string) => setDraft((d) => ({ ...d, name }));
@@ -144,6 +159,48 @@ export function App() {
     setErr('');
     const ty = yearOf(a);
     if (ty !== year) jumpTo(ty, true);
+  };
+
+  /** Adds suggested breaks as trips, each over its whole break so that it shows as one band; a break that now clashes is skipped. */
+  const addSuggestions = (picks: Suggestion[]) => {
+    const taken = { ...own };
+    const added: Trip[] = [];
+    const stamp = Date.now().toString(36);
+    for (const s of picks) {
+      const days: string[] = [];
+      let clash = false;
+      eachDay(s.start, s.end, (k) => {
+        days.push(k);
+        if (taken[k]) clash = true;
+      });
+      if (clash) continue;
+      const trip: Trip = {
+        id: `t${stamp}${added.length ? `-${added.length}` : ''}`,
+        name: clusterName(s.holidays),
+        from: s.start,
+        to: s.end,
+        color: PALETTE[(trips.length + added.length) % PALETTE.length],
+      };
+      for (const k of days) taken[k] = trip;
+      added.push(trip);
+    }
+    if (added.length === 0) {
+      toast('Those days are already planned.');
+      return;
+    }
+    setTrips([...trips, ...added]);
+    const ids = new Set(added.map((t) => t.id));
+    const kept = picks.filter((s) => added.some((t) => t.from === s.start && t.to === s.end));
+    const off = kept.reduce((n, s) => n + s.off, 0);
+    const leave = kept.reduce((n, s) => n + s.leave, 0);
+    toast(added.length === 1 ? `Added “${added[0].name}”` : `Added ${plural(added.length, 'break')}`, {
+      description: added.length === 1 ? dealText(kept[0]) : `${plural(off, 'day')} off for ${plural(leave, 'day')} of leave`,
+      action: { label: 'Undo', onClick: () => setTrips((ts) => ts.filter((t) => !ids.has(t.id))) },
+    });
+    if (isMobile) {
+      setInsightsMobile(false);
+      jumpTo(yearOf(kept[0].from), true, Number(kept[0].from.slice(5, 7)) - 1);
+    }
   };
 
   const removeTrip = (id: string) => {
@@ -234,6 +291,9 @@ export function App() {
             onPrev={() => jumpTo(year - 1, true)}
             onNext={() => jumpTo(year + 1, true)}
             onToday={goToday}
+            insightsOpen={isMobile ? insightsMobile : insightsOpen}
+            insightsId={INSIGHTS_ID}
+            onToggleInsights={toggleInsights}
           >
             <SettingsPopover
               settings={settings}
@@ -252,6 +312,27 @@ export function App() {
           </AppHeader>
           <YearCalendar years={years} view={settings.view} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} />
         </SidebarInset>
+        <InsightsPanel
+          isMobile={isMobile}
+          open={insightsOpen}
+          onOpenChange={setInsightsOpen}
+          openMobile={insightsMobile}
+          onOpenMobileChange={setInsightsMobile}
+          proto={proto}
+          onProtoChange={changeProto}
+          insights={insights}
+          model={cur}
+          allowance={settings.allowance}
+          holidaysOn={settings.holidays}
+          status={holidayStore.status(settings.country, year)}
+          today={TODAY_KEY}
+          weekStart={settings.weekStart}
+          onAdd={addSuggestions}
+          onJumpMonth={(m) => {
+            jumpTo(year, true, m);
+            if (isMobile) setInsightsMobile(false);
+          }}
+        />
       </SidebarProvider>
     </TooltipProvider>
   );
