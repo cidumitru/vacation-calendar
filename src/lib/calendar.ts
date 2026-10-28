@@ -18,8 +18,17 @@ export function isFree(key: string, settings: Settings, lookup: HolidayLookup): 
   return !!lookup(yearOf(key))[key];
 }
 
-export type FreeFn = (key: string) => boolean;
-export const freeFn = (settings: Settings, lookup: HolidayLookup): FreeFn => (k) => isFree(k, settings, lookup);
+/** Why a day is free: a weekend (a holiday falling on one adds nothing), a public holiday on a weekday, or not free at all. */
+export type FreeDay = false | 'weekend' | 'holiday';
+export type FreeFn = (key: string) => FreeDay;
+
+export function freeOf(key: string, settings: Settings, lookup: HolidayLookup): FreeDay {
+  if (isWeekend(key)) return 'weekend';
+  if (settings.holidays && lookup(yearOf(key))[key]) return 'holiday';
+  return false;
+}
+
+export const freeFn = (settings: Settings, lookup: HolidayLookup): FreeFn => (k) => freeOf(k, settings, lookup);
 
 /** Working days one block of leave may hold: a working week. Longer blocks only dilute the value. */
 export const MAX_LEAVE = 5;
@@ -41,33 +50,44 @@ export interface Block {
   end: string;
 }
 
-/** Offsets (days away, from 1) of the nearest MAX_LEAVE working days on one side; one past the cap stands in for a missing one. */
-function workingDays(key: string, dir: -1 | 1, free: FreeFn): number[] {
-  const pos: number[] = [];
+interface Side {
+  /** Offsets (days away, from 1) of the nearest MAX_LEAVE working days; one past the cap stands in for a missing one. */
+  work: number[];
+  /** Offset of the nearest weekday public holiday, Infinity when none lies within reach. */
+  holiday: number;
+}
+
+function walk(key: string, dir: -1 | 1, free: FreeFn): Side {
+  const work: number[] = [];
+  let holiday = Infinity;
   const t = ms(key);
-  for (let n = 1; n <= WALK_CAP && pos.length < MAX_LEAVE; n++) {
-    if (!free(isoMs(t + dir * n * DAY))) pos.push(n);
+  for (let n = 1; n <= WALK_CAP && work.length < MAX_LEAVE; n++) {
+    const f = free(isoMs(t + dir * n * DAY));
+    if (!f) work.push(n);
+    else if (f === 'holiday' && holiday === Infinity) holiday = n;
   }
-  while (pos.length < MAX_LEAVE) pos.push(WALK_CAP + 1);
-  return pos;
+  while (work.length < MAX_LEAVE) work.push(WALK_CAP + 1);
+  return { work, holiday };
 }
 
 /**
- * The best block of leave through this day: of every run of up to MAX_LEAVE working days that includes it,
- * the one with the most days off per day of leave, and the longest break among equals. So a Friday alone
- * is 3 for 1, the Thursday before a Friday holiday is 4 for 1, and a plain day wedged between two such
- * days joins them into one long break instead of scoring nothing. null for a day that is already free.
- * Trips are left out on purpose: the block describes the calendar, not the plan, and the heat map shades it.
+ * The best block of leave through this day: of every run of up to MAX_LEAVE working days that includes it
+ * and whose break takes in a public holiday, the one with the most days off per day of leave, and the
+ * longest break among equals. So the Thursday before a Friday holiday is 4 for 1, and a plain day wedged
+ * between two such days joins them into one long break instead of scoring nothing; a regular Friday buys
+ * 3 for 1 but captures no holiday, so with nothing else around it has no block. null for a day that is
+ * already free. Trips are left out on purpose: the block describes the calendar, not the plan.
  */
 export function bestBlock(key: string, free: FreeFn): Block | null {
   if (free(key)) return null;
-  const left = workingDays(key, -1, free);
-  const right = workingDays(key, 1, free);
+  const { work: left, holiday: holLeft } = walk(key, -1, free);
+  const { work: right, holiday: holRight } = walk(key, 1, free);
   const t = ms(key);
   let best: Block | null = null;
   for (let i = 0; i < MAX_LEAVE; i++) {
     for (let j = 0; i + j < MAX_LEAVE; j++) {
       // i working days taken on the left and j on the right; the break runs over the free days beyond them.
+      if (holLeft > left[i] - 1 && holRight > right[j] - 1) continue; // no holiday inside the break
       const off = left[i] + right[j] - 1;
       const leave = 1 + i + j;
       const better = !best || off * best.leave > best.off * leave || (off * best.leave === best.off * leave && off > best.off);
@@ -202,11 +222,11 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
   const offBy: Record<string, number> = {};
   let used = 0;
   // Free-day lookups are memoised: every working day's best block scans a few weeks either side.
-  const freeCache = new Map<string, boolean>();
+  const freeCache = new Map<string, FreeDay>();
   const freeDay: FreeFn = (k) => {
     let v = freeCache.get(k);
     if (v === undefined) {
-      v = isFree(k, S, ctx.lookup);
+      v = freeOf(k, S, ctx.lookup);
       freeCache.set(k, v);
     }
     return v;
