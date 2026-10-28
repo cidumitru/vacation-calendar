@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { AppSidebar, type HintKind, type Segment, type TripRow } from '@/components/app-sidebar';
 import { dealText, plural } from '@/components/insights-bits';
-import { INSIGHTS_ID, InsightsPanel, loadProto, saveProto, type InsightsProto } from '@/components/insights-panel';
+import { INSIGHTS_ID, InsightsPanel } from '@/components/insights-panel';
 import { SettingsPopover } from '@/components/settings-popover';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -42,14 +42,9 @@ export function App() {
   const atToday = year === THIS_YEAR && (!isMobile || month === THIS_MONTH);
   const goToday = () => jumpTo(THIS_YEAR, true, isMobile ? THIS_MONTH : undefined);
 
-  // ---- The insights panel: open beside the calendar on wider screens, a sheet on phones; two prototypes of its content.
+  // ---- The insights panel: open beside the calendar on wider screens, a sheet on phones.
   const [insightsOpen, setInsightsOpen] = useState(true);
   const [insightsMobile, setInsightsMobile] = useState(false);
-  const [proto, setProto] = useState<InsightsProto>(loadProto);
-  const changeProto = (p: InsightsProto) => {
-    setProto(p);
-    saveProto(p);
-  };
   const toggleInsights = () => (isMobile ? setInsightsMobile((v) => !v) : setInsightsOpen((v) => !v));
 
   // ---- Persistence: write after every change to trips or settings (not on first load).
@@ -318,8 +313,6 @@ export function App() {
           onOpenChange={setInsightsOpen}
           openMobile={insightsMobile}
           onOpenMobileChange={setInsightsMobile}
-          proto={proto}
-          onProtoChange={changeProto}
           insights={insights}
           model={cur}
           allowance={settings.allowance}

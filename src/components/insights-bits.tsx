@@ -1,8 +1,8 @@
-// Pieces both insights prototypes share: the props they take, the heat-coloured value badge, the wording of a
-// break and the note that stands in for the suggestions while there are none.
+// Pieces the insights panel shares with the app: the props its content takes, the heat-coloured value badge, the
+// wording of a break (the toast uses it too) and the note that stands in for the suggestions while there are none.
 
 import { HEAT_CLASS, heatLevel } from '@/components/heat-scale';
-import { MONTH_SHORT, fmt, ms } from '@/lib/dates';
+import { fmt } from '@/lib/dates';
 import type { YearModel } from '@/lib/calendar';
 import type { LoadStatus } from '@/lib/holidayStore';
 import type { Suggestion, YearInsights } from '@/lib/insights';
@@ -34,12 +34,6 @@ export const breakRange = (s: Suggestion, year: number): string => `${fmt(s.star
 
 /** "Mon 5 Jan" or "Mon 5 – Fri 9 Jan": the days of leave. */
 export const leaveRange = (s: Suggestion, year: number): string => (s.from === s.to ? fmt(s.from, year) : `${fmt(s.from, year)} – ${fmt(s.to, year)}`);
-
-/** "14 Apr": a day without its weekday, for the chips. */
-export function dayMonth(key: string): string {
-  const d = new Date(ms(key));
-  return `${d.getUTCDate()} ${MONTH_SHORT[d.getUTCMonth()]}`;
-}
 
 /** "7 days off for 1 day of leave". */
 export const dealText = (s: Suggestion): string => `${plural(s.off, 'day')} off for ${plural(s.leave, 'day')} of leave`;

@@ -1,5 +1,5 @@
-// Prototype B, "Year map": twelve month strips that show where the holidays, the breaks worth taking and the trips
-// fall, a ledger of the year's figures, and the breaks in date order with every length on its own line.
+// The insights panel's content: twelve month strips that show where the holidays, the breaks worth taking and the
+// trips fall, a ledger of the year's figures, and the breaks in date order with every length on its own line.
 
 import { CheckIcon, PlusIcon } from 'lucide-react';
 import type { CSSProperties } from 'react';
