@@ -9,8 +9,8 @@ A yearly vacation planner: one client-only web page with no backend, no accounts
 - Today returns to the current year, or on phones, where months stack in one column, to the current month; the app opens there too
 - Sidebar with a summary, a New Trip form (a date-range picker, or click two days in the calendar) and the trips of the year in view; removing a trip can be undone from the toast
 - Insights panel on the right (the panel button at the right end of the header; a sheet on phones) for the year in view: a map of the year, working days, weekends, public holidays on weekdays and the ones lost to a weekend, bridge days, what the leave still left can buy, and the breaks worth taking grouped around each holiday; a click adds a break to the calendar as a trip, undoable from the toast
-- Settings popover: holidays on/off, searchable country list, region, week start, days off per year
-- Light, dark and system appearance; on phones the sidebar opens as a sheet
+- Settings popover: holidays on/off, searchable country list, region, week start, days off per year, and the appearance (light, dark or system)
+- On phones the sidebar opens as a sheet
 
 ## Develop
 
@@ -67,4 +67,4 @@ For a user or organisation site, or a custom domain, set `BASE_PATH` to `/` in t
 
 ## Storage
 
-`vp-apple-v1` holds `{ trips, settings }` (settings include the calendar view, `calendar` or `heatmap`); `vp-holidays-v1` and `vp-countries-v1` hold the Nager.Date cache; `vp-theme` holds the appearance choice. A missing, corrupt or blocked store falls back to the defaults and three seed trips for 2026. Clear site data to start over.
+`vp-apple-v1` holds `{ trips, settings }` (settings include the calendar view, `calendar` or `heatmap`); `vp-holidays-v1` and `vp-countries-v1` hold the Nager.Date cache; `vp-theme` holds the appearance choice (Settings). A missing, corrupt or blocked store falls back to the defaults and three seed trips for 2026. Clear site data to start over.

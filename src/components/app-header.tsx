@@ -1,7 +1,6 @@
 import { CalendarCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, PanelRightIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { HeatLegend } from '@/components/heat-scale';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Separator } from '@/components/ui/separator';
@@ -73,7 +72,6 @@ export function AppHeader(p: Props) {
           <span className="sr-only sm:not-sr-only">Heat map</span>
         </Toggle>
         {p.children}
-        <ThemeToggle />
         <Button
           variant="ghost"
           size="icon-sm"
