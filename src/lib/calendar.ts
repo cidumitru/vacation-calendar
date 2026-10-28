@@ -24,6 +24,8 @@ export const freeFn = (settings: Settings, lookup: HolidayLookup): FreeFn => (k)
 /** Working days one block of leave may hold: a working week. Longer blocks only dilute the value. */
 export const MAX_LEAVE = 5;
 const WALK_CAP = 60; // days scanned per side; MAX_LEAVE working days plus the free days between them is far shorter
+/** Days either side of a year whose blocks may reach into it: MAX_LEAVE working days with holidays between span a few weeks at most. */
+const HEAT_MARGIN = 28;
 
 /** A block of leave through a day: its working days plus every free day inside it and touching either end. */
 export interface Block {
@@ -34,6 +36,9 @@ export interface Block {
   /** Its first and last working day. */
   from: string;
   to: string;
+  /** The first and last day of the break it buys: the free days beyond from and to included. */
+  start: string;
+  end: string;
 }
 
 /** Offsets (days away, from 1) of the nearest MAX_LEAVE working days on one side; one past the cap stands in for a missing one. */
@@ -66,7 +71,16 @@ export function bestBlock(key: string, free: FreeFn): Block | null {
       const off = left[i] + right[j] - 1;
       const leave = 1 + i + j;
       const better = !best || off * best.leave > best.off * leave || (off * best.leave === best.off * leave && off > best.off);
-      if (better) best = { off, leave, from: i ? isoMs(t - left[i - 1] * DAY) : key, to: j ? isoMs(t + right[j - 1] * DAY) : key };
+      if (better) {
+        best = {
+          off,
+          leave,
+          from: i ? isoMs(t - left[i - 1] * DAY) : key,
+          to: j ? isoMs(t + right[j - 1] * DAY) : key,
+          start: isoMs(t - (left[i] - 1) * DAY),
+          end: isoMs(t + (right[j] - 1) * DAY),
+        };
+      }
     }
   }
   return best;
@@ -117,6 +131,8 @@ export interface DayCell {
   value: number;
   /** That block, for the tooltip; null on a free day. */
   best: Block | null;
+  /** The value of the strongest break covering this day: its own on a working day, so that a weekend or holiday inside a break takes its heat. */
+  heat: number;
   aria: string;
 }
 
@@ -195,6 +211,23 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
     }
     return v;
   };
+  // Every day's best block, for the year and the weeks either side so that breaks crossing the year edge
+  // count. Heat then reaches every day inside a break: a weekend or holiday takes the strongest block
+  // covering it, so the whole length of a vacation shows as one band.
+  const blocks = new Map<string, Block | null>();
+  const heat = new Map<string, number>();
+  const t1 = Date.UTC(y, 11, 31) + HEAT_MARGIN * DAY;
+  for (let t = Date.UTC(y, 0, 1) - HEAT_MARGIN * DAY; t <= t1; t += DAY) {
+    const k = isoMs(t);
+    const b = bestBlock(k, freeDay);
+    blocks.set(k, b);
+    if (!b) continue;
+    const v = b.off / b.leave;
+    for (let u = ms(b.start), end = ms(b.end); u <= end; u += DAY) {
+      const d = isoMs(u);
+      if ((heat.get(d) ?? 0) < v) heat.set(d, v);
+    }
+  }
 
   const months = MONTH_NAMES.map((name, m): MonthModel => {
     const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
@@ -243,7 +276,7 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
         kind = 'weekend';
       }
 
-      const best = bestBlock(c.key, freeDay);
+      const best = blocks.get(c.key) ?? null;
       cells.push({
         n: c.d,
         key: c.key,
@@ -256,6 +289,7 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
         holiday: c.hol,
         value: best ? best.off / best.leave : 0,
         best,
+        heat: heat.get(c.key) ?? 0,
         aria: `${DAY_SHORT[c.g]} ${c.d} ${name}${c.hol ? `, ${c.hol}` : ''}${c.t ? `, ${c.t.name}` : ''}`,
       });
     });
