@@ -1,4 +1,4 @@
-import { CalendarCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, PanelRightIcon } from 'lucide-react';
+import { CalendarCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon, LightbulbIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { HeatLegend } from '@/components/heat-scale';
 import { Button } from '@/components/ui/button';
@@ -18,11 +18,9 @@ interface Props {
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
-  /** The insights panel: open beside the calendar, or as a sheet on phones. */
-  insightsOpen: boolean;
-  insightsId: string;
-  onToggleInsights: () => void;
-  /** Extra controls at the right end, before the theme toggle. */
+  /** Opens the insights dialog for the year in view. */
+  onOpenInsights: () => void;
+  /** Extra controls at the right end. */
   children?: ReactNode;
 }
 
@@ -41,6 +39,9 @@ export function AppHeader(p: Props) {
         </Button>
       </ButtonGroup>
       <h1 className="px-1 text-lg font-semibold tabular-nums">{p.year}</h1>
+      <Button variant="ghost" size="icon-sm" aria-label={`Insights for ${p.year}`} onClick={p.onOpenInsights}>
+        <LightbulbIcon />
+      </Button>
       {p.showToday && (
         // Icon-only on phones, where the header has no room for the word.
         <Button variant="ghost" size="sm" onClick={p.onToday} className="px-2 sm:px-2.5">
@@ -72,17 +73,6 @@ export function AppHeader(p: Props) {
           <span className="sr-only sm:not-sr-only">Heat map</span>
         </Toggle>
         {p.children}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="-mr-1"
-          aria-label="Toggle insights"
-          aria-expanded={p.insightsOpen}
-          aria-controls={p.insightsId}
-          onClick={p.onToggleInsights}
-        >
-          <PanelRightIcon className="rtl:rotate-180" />
-        </Button>
       </div>
     </header>
   );
