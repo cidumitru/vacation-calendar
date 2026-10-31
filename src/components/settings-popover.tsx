@@ -10,7 +10,7 @@ import { Switch } from '@/components/ui/switch';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { LoadStatus } from '@/lib/holidayStore';
-import type { NagerCountry } from '@/lib/nager';
+import type { Country, Region } from '@/lib/holidays';
 import type { Settings, WeekStart } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -19,39 +19,41 @@ const NATIONWIDE = 'nationwide'; // Radix Select keeps '' for its placeholder
 interface Props {
   settings: Settings;
   year: number;
-  countries: NagerCountry[] | undefined;
-  countriesStatus: LoadStatus;
-  regions: string[];
+  /** Every country with data, or undefined while the rules load. */
+  countries: Country[] | undefined;
+  /** The regions of the selected country whose holidays differ; [] when there are none. */
+  regions: Region[];
   holidayCount: number;
   status: LoadStatus;
   onRetry: () => void;
   onChange: (patch: Partial<Settings>) => void;
 }
 
-export function SettingsPopover({ settings, year, countries, countriesStatus, regions, holidayCount, status, onRetry, onChange }: Props) {
-  const countryOptions: NagerCountry[] = countries ? [...countries] : [];
-  if (!countryOptions.some((c) => c.countryCode === settings.country)) {
-    countryOptions.unshift({ countryCode: settings.country, name: settings.country });
-  }
-  const regionOptions = settings.region && !regions.includes(settings.region) ? [settings.region, ...regions] : regions;
+export function SettingsPopover({ settings, year, countries, regions, holidayCount, status, onRetry, onChange }: Props) {
+  const known = !countries || countries.some((c) => c.code === settings.country);
+  const countryOptions: Country[] = countries ? [...countries] : [];
+  if (!known) countryOptions.unshift({ code: settings.country, name: settings.country });
+  const regionOptions =
+    settings.region && !regions.some((r) => r.code === settings.region) ? [{ code: settings.region, name: settings.region }, ...regions] : regions;
   const showRegion = settings.holidays && regionOptions.length > 0;
 
   let note: string;
   let noteIsError = false;
   if (!settings.holidays) {
     note = 'Turn on to mark public holidays and leave them out of your count.';
-  } else if (status.error && !status.loaded) {
-    note = `Couldn’t load public holidays for ${year}: ${status.error}.`;
+  } else if (status.error) {
+    note = `Couldn’t load public holidays: ${status.error}.`;
     noteIsError = true;
   } else if (!status.loaded) {
     note = 'Loading public holidays…';
+  } else if (!known) {
+    note = `No holiday data for ${settings.country}; pick another country.`;
+    noteIsError = true;
   } else {
     note = `${holidayCount} public ${holidayCount === 1 ? 'holiday' : 'holidays'} in ${year}.`;
     if (regions.length && !settings.region) note += ' Nationwide days only; pick a region for local ones.';
-    if (status.error) note += ' Showing a saved copy; the refresh failed.';
   }
-  if (settings.holidays && countriesStatus.error && !countriesStatus.loaded) note += ' The country list could not be loaded either.';
-  const canRetry = settings.holidays && (status.error || countriesStatus.error) && !status.loading && !countriesStatus.loading;
+  const canRetry = settings.holidays && !!status.error && !status.loading;
 
   return (
     <Popover>
@@ -82,7 +84,7 @@ export function SettingsPopover({ settings, year, countries, countriesStatus, re
               id="settings-country"
               value={settings.country}
               options={countryOptions}
-              loading={!countries && countriesStatus.loading}
+              loading={!countries && status.loading}
               disabled={!settings.holidays}
               onChange={(country) => onChange({ country, region: null })}
             />
@@ -94,8 +96,8 @@ export function SettingsPopover({ settings, year, countries, countriesStatus, re
                 <SelectContent>
                   <SelectItem value={NATIONWIDE}>Nationwide only</SelectItem>
                   {regionOptions.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {r}
+                    <SelectItem key={r.code} value={r.code}>
+                      {r.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -174,11 +176,11 @@ export function SettingsPopover({ settings, year, countries, countriesStatus, re
         </FieldGroup>
 
         <p className="text-xs text-muted-foreground">
-          Holiday data by{' '}
-          <a className="underline underline-offset-4 hover:text-foreground" href="https://date.nager.at" target="_blank" rel="noreferrer">
-            Nager.Date
-          </a>
-          , cached in this browser.
+          Holiday data from{' '}
+          <a className="underline underline-offset-4 hover:text-foreground" href="https://github.com/commenthol/date-holidays" target="_blank" rel="noreferrer">
+            date-holidays
+          </a>{' '}
+          (CC BY-SA 3.0), computed in this browser.
         </p>
       </PopoverContent>
     </Popover>
@@ -188,7 +190,7 @@ export function SettingsPopover({ settings, year, countries, countriesStatus, re
 interface ComboboxProps {
   id: string;
   value: string;
-  options: NagerCountry[];
+  options: Country[];
   loading: boolean;
   disabled: boolean;
   onChange: (code: string) => void;
@@ -196,7 +198,7 @@ interface ComboboxProps {
 
 function CountryCombobox({ id, value, options, loading, disabled, onChange }: ComboboxProps) {
   const [open, setOpen] = useState(false);
-  const current = options.find((c) => c.countryCode === value);
+  const current = options.find((c) => c.code === value);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -213,15 +215,15 @@ function CountryCombobox({ id, value, options, loading, disabled, onChange }: Co
             <CommandGroup>
               {options.map((c) => (
                 <CommandItem
-                  key={c.countryCode}
-                  value={`${c.name} ${c.countryCode}`}
+                  key={c.code}
+                  value={`${c.name} ${c.code}`}
                   onSelect={() => {
-                    onChange(c.countryCode);
+                    onChange(c.code);
                     setOpen(false);
                   }}
                 >
                   {c.name}
-                  <CheckIcon className={cn('ml-auto', c.countryCode === value ? 'opacity-100' : 'opacity-0')} />
+                  <CheckIcon className={cn('ml-auto', c.code === value ? 'opacity-100' : 'opacity-0')} />
                 </CommandItem>
               ))}
             </CommandGroup>

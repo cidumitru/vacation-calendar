@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { STORE_KEY, guessCountry, load, mergeSettings, save } from '../storage';
+import { STALE_KEYS, STORE_KEY, guessCountry, load, mergeSettings, save } from '../storage';
 
 class MemoryStorage {
   map = new Map<string, string>();
   getItem(k: string) { return this.map.get(k) ?? null; }
   setItem(k: string, v: string) { this.map.set(k, v); }
+  removeItem(k: string) { this.map.delete(k); }
 }
 
 describe('Default country', () => {
@@ -33,6 +34,7 @@ describe('Settings merge and migration', () => {
     expect(mergeSettings({ country: 'DE', region: 'DE-BY' }).region).toBe('DE-BY');
     expect(mergeSettings({ country: 'DE', region: 'GB-SCT' }).region).toBeNull();
     expect(mergeSettings({ country: 'DE', region: 'bavaria' }).region).toBeNull();
+    expect(mergeSettings({ country: 'CK', region: 'CK-Aitutaki' }).region).toBe('CK-Aitutaki'); // subdivisions are not always short codes
   });
 
   it('fills missing keys with defaults and clamps the allowance', () => {
@@ -50,6 +52,15 @@ describe('Settings merge and migration', () => {
 });
 
 describe('load / save', () => {
+  it('forgets the holiday cache of earlier releases', () => {
+    const storage = new MemoryStorage();
+    for (const k of STALE_KEYS) storage.setItem(k, '{}');
+    storage.setItem('vp-theme', 'dark');
+    load(storage);
+    for (const k of STALE_KEYS) expect(storage.map.has(k)).toBe(false);
+    expect(storage.map.get('vp-theme')).toBe('dark');
+  });
+
   it('round-trips trips and settings and falls back to seeds', () => {
     const storage = new MemoryStorage();
     const first = load(storage);

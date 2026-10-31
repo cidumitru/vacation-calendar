@@ -1,22 +1,9 @@
-// Caches Nager.Date responses in memory and in localStorage, deduplicates in-flight
-// requests and serves stale entries while refreshing them in the background.
+// Serves public holidays computed in the browser (see holidayEngine). Nothing is fetched from a
+// server: the engine, the rules for 200+ countries at about 250 KB gzipped, is loaded once as its
+// own chunk so the calendar paints first, and results are memoised per country, region and year.
 
-import { NagerError, fetchAvailableCountries, fetchPublicHolidays, type FetchLike, type NagerCountry, type NagerHoliday } from './nager';
-
-export const HOLIDAYS_STORE_KEY = 'vp-holidays-v1';
-export const COUNTRIES_STORE_KEY = 'vp-countries-v1';
-export const MAX_AGE_MS = 30 * 86_400_000; // refresh an entry after 30 days
-export const MAX_ENTRIES = 200; // country-years kept in localStorage
-
-interface Entry<T> {
-  data: T;
-  fetchedAt: number;
-}
-
-interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
+import type { HolidayEngine } from './holidayEngine';
+import type { Country, Holiday, Region } from './holidays';
 
 export interface LoadStatus {
   loaded: boolean;
@@ -24,37 +11,21 @@ export interface LoadStatus {
   error: string | null;
 }
 
-interface Options {
-  fetchImpl?: FetchLike;
-  storage?: StorageLike | null;
-  now?: () => number;
-}
+export type EngineLoader = () => Promise<HolidayEngine>;
 
-function defaultStorage(): StorageLike | null {
-  try {
-    return typeof window !== 'undefined' ? window.localStorage : null;
-  } catch {
-    return null;
-  }
-}
+export const LOAD_ERROR = 'the holiday rules did not download';
+
+const loadDefault: EngineLoader = () => import('./holidayEngine').then((m) => m.createEngine());
 
 export class HolidayStore {
-  private holidays = new Map<string, Entry<NagerHoliday[]>>();
-  private countries: Entry<NagerCountry[]> | null = null;
-  private inflight = new Set<string>();
-  private errors = new Map<string, string>();
+  private engine: HolidayEngine | null = null;
+  private loading = false;
+  private error: string | null = null;
+  private memo = new Map<string, Holiday[] | null>();
   private listeners = new Set<() => void>();
   private version = 0;
-  private loadedFromStorage = false;
-  private readonly fetchImpl: FetchLike;
-  private readonly storage: StorageLike | null;
-  private readonly now: () => number;
 
-  constructor(opts: Options = {}) {
-    this.fetchImpl = opts.fetchImpl ?? ((input, init) => fetch(input, init));
-    this.storage = opts.storage === undefined ? defaultStorage() : opts.storage;
-    this.now = opts.now ?? (() => Date.now());
-  }
+  constructor(private readonly loadEngine: EngineLoader = loadDefault) {}
 
   // ---- subscription (useSyncExternalStore-compatible)
   subscribe = (listener: () => void): (() => void) => {
@@ -69,130 +40,56 @@ export class HolidayStore {
     for (const l of this.listeners) l();
   }
 
-  // ---- holidays
-  private key(country: string, year: number): string {
-    return `${country}:${year}`;
+  // ---- the engine
+  /** Loads the engine once; no-op while it loads or once it has. A failed load waits for retry(). */
+  load(): void {
+    if (this.engine || this.loading || this.error) return;
+    void this.run();
   }
 
-  /** The raw Nager list for a country-year, or undefined while nothing is loaded. */
-  get(country: string, year: number): NagerHoliday[] | undefined {
-    this.hydrate();
-    return this.holidays.get(this.key(country, year))?.data;
+  retry(): void {
+    this.error = null;
+    this.load();
   }
 
-  status(country: string, year: number): LoadStatus {
-    this.hydrate();
-    const k = this.key(country, year);
-    return { loaded: this.holidays.has(k), loading: this.inflight.has(k), error: this.errors.get(k) ?? null };
-  }
-
-  /** Fetches when missing or older than MAX_AGE_MS; a failed fetch waits for retry(). */
-  ensure(country: string, year: number): void {
-    this.hydrate();
-    const k = this.key(country, year);
-    const entry = this.holidays.get(k);
-    if (entry && this.now() - entry.fetchedAt < MAX_AGE_MS) return;
-    if (this.inflight.has(k) || this.errors.has(k)) return;
-    void this.load(country, year);
-  }
-
-  retry(country: string, year: number): void {
-    const k = this.key(country, year);
-    this.errors.delete(k);
-    if (!this.inflight.has(k)) void this.load(country, year);
-  }
-
-  private async load(country: string, year: number): Promise<void> {
-    const k = this.key(country, year);
-    this.inflight.add(k);
+  private async run(): Promise<void> {
+    this.loading = true;
     this.bump();
     try {
-      const data = await fetchPublicHolidays(country, year, this.fetchImpl);
-      this.holidays.set(k, { data, fetchedAt: this.now() });
-      this.errors.delete(k);
-      this.persistHolidays();
-    } catch (e) {
-      this.errors.set(k, e instanceof NagerError ? e.message : 'Network error');
+      this.engine = await this.loadEngine();
+    } catch {
+      this.error = LOAD_ERROR;
     } finally {
-      this.inflight.delete(k);
+      this.loading = false;
       this.bump();
     }
   }
 
-  // ---- countries
-  getCountries(): NagerCountry[] | undefined {
-    this.hydrate();
-    return this.countries?.data;
+  status(): LoadStatus {
+    return { loaded: !!this.engine, loading: this.loading, error: this.error };
   }
 
-  countriesStatus(): LoadStatus {
-    this.hydrate();
-    return { loaded: !!this.countries, loading: this.inflight.has('countries'), error: this.errors.get('countries') ?? null };
-  }
-
-  ensureCountries(): void {
-    this.hydrate();
-    if (this.countries && this.now() - this.countries.fetchedAt < MAX_AGE_MS) return;
-    if (this.inflight.has('countries') || this.errors.has('countries')) return;
-    void this.loadCountries();
-  }
-
-  retryCountries(): void {
-    this.errors.delete('countries');
-    if (!this.inflight.has('countries')) void this.loadCountries();
-  }
-
-  private async loadCountries(): Promise<void> {
-    this.inflight.add('countries');
-    this.bump();
-    try {
-      const data = await fetchAvailableCountries(this.fetchImpl);
-      this.countries = { data, fetchedAt: this.now() };
-      this.errors.delete('countries');
-      this.write(COUNTRIES_STORE_KEY, this.countries);
-    } catch (e) {
-      this.errors.set('countries', e instanceof NagerError ? e.message : 'Network error');
-    } finally {
-      this.inflight.delete('countries');
-      this.bump();
+  // ---- data, all synchronous once the engine is in
+  /** The holidays of a country (and region) in a year; undefined while the engine loads or for an unknown country. */
+  get(country: string, region: string | null, year: number): Holiday[] | undefined {
+    if (!this.engine) return undefined;
+    const k = `${country}|${region ?? ''}|${year}`;
+    let list = this.memo.get(k);
+    if (list === undefined) {
+      list = this.engine.holidays(country, region, year) ?? null;
+      this.memo.set(k, list);
     }
+    return list ?? undefined;
   }
 
-  // ---- localStorage
-  private hydrate(): void {
-    if (this.loadedFromStorage) return;
-    this.loadedFromStorage = true;
-    const h = this.read(HOLIDAYS_STORE_KEY) as { entries?: Record<string, Entry<unknown>> } | null;
-    if (h && h.entries && typeof h.entries === 'object') {
-      for (const [k, e] of Object.entries(h.entries)) {
-        if (e && Array.isArray(e.data) && typeof e.fetchedAt === 'number') this.holidays.set(k, e as Entry<NagerHoliday[]>);
-      }
-    }
-    const c = this.read(COUNTRIES_STORE_KEY) as Entry<unknown> | null;
-    if (c && Array.isArray(c.data) && typeof c.fetchedAt === 'number') this.countries = c as Entry<NagerCountry[]>;
+  /** Every country with data, sorted by name; undefined while the engine loads. */
+  countries(): Country[] | undefined {
+    return this.engine?.countries();
   }
 
-  private persistHolidays(): void {
-    const entries = [...this.holidays.entries()].sort((a, b) => b[1].fetchedAt - a[1].fetchedAt).slice(0, MAX_ENTRIES);
-    this.write(HOLIDAYS_STORE_KEY, { entries: Object.fromEntries(entries) });
-  }
-
-  private read(key: string): unknown {
-    if (!this.storage) return null;
-    try {
-      return JSON.parse(this.storage.getItem(key) || 'null');
-    } catch {
-      return null;
-    }
-  }
-
-  private write(key: string, value: unknown): void {
-    if (!this.storage) return;
-    try {
-      this.storage.setItem(key, JSON.stringify(value));
-    } catch {
-      // Storage blocked or full: the in-memory cache still works.
-    }
+  /** The regions of a country whose holidays differ by region; [] while the engine loads or when there are none. */
+  regions(country: string): Region[] {
+    return this.engine?.regions(country) ?? [];
   }
 }
 

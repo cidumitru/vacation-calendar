@@ -12,7 +12,7 @@ import { isMobileViewport, useIsMobile } from '@/hooks/use-mobile';
 import { useYearScroller } from '@/hooks/use-year-scroller';
 import { buildContext, buildYear, count, draftRange, ownMap, type YearModel } from '@/lib/calendar';
 import { daysBetween, eachDay, fmt, iso, yearOf } from '@/lib/dates';
-import { countHolidays, regionsOf, toHolidayMap, type HolidayLookup, type HolidayMap } from '@/lib/holidays';
+import { countHolidays, toHolidayMap, type HolidayLookup, type HolidayMap } from '@/lib/holidays';
 import { holidayStore } from '@/lib/holidayStore';
 import { buildInsights, clusterName, type Suggestion } from '@/lib/insights';
 import { PALETTE } from '@/lib/palette';
@@ -57,32 +57,24 @@ export function App() {
     save({ trips, settings });
   }, [trips, settings]);
 
-  // ---- Public holidays from Nager.Date, through the cached store.
+  // ---- Public holidays, computed locally once the rules are loaded (see holidayStore).
   const holidayVersion = useSyncExternalStore(holidayStore.subscribe, holidayStore.getVersion);
   const [pa, pb] = draftRange(draft.from, draft.to);
   useEffect(() => {
-    if (!settings.holidays) return;
-    holidayStore.ensureCountries();
-    const years = new Set<number>();
-    for (let y = yFrom; y <= yTo; y++) years.add(y);
-    if (pa) {
-      years.add(yearOf(pa));
-      years.add(yearOf(pb));
-    }
-    for (const y of years) if (y >= MIN_YEAR && y <= MAX_YEAR) holidayStore.ensure(settings.country, y);
-  }, [settings.holidays, settings.country, yFrom, yTo, pa, pb]);
+    if (settings.holidays) holidayStore.load();
+  }, [settings.holidays]);
 
   const lookup = useMemo<HolidayLookup>(() => {
     const maps = new Map<number, HolidayMap>();
     return (y: number) => {
       let m = maps.get(y);
       if (!m) {
-        m = settings.holidays ? toHolidayMap(holidayStore.get(settings.country, y) ?? [], settings.region, y) : {};
+        m = settings.holidays ? toHolidayMap(holidayStore.get(settings.country, settings.region, y) ?? [], y) : {};
         maps.set(y, m);
       }
       return m;
     };
-    // holidayVersion changes whenever the store receives data.
+    // holidayVersion changes when the rules arrive.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.holidays, settings.country, settings.region, holidayVersion]);
 
@@ -293,15 +285,11 @@ export function App() {
             <SettingsPopover
               settings={settings}
               year={year}
-              countries={holidayStore.getCountries()}
-              countriesStatus={holidayStore.countriesStatus()}
-              regions={regionsOf(holidayStore.get(settings.country, year) ?? [])}
+              countries={holidayStore.countries()}
+              regions={holidayStore.regions(settings.country)}
               holidayCount={countHolidays(lookup(year))}
-              status={holidayStore.status(settings.country, year)}
-              onRetry={() => {
-                holidayStore.retry(settings.country, year);
-                holidayStore.retryCountries();
-              }}
+              status={holidayStore.status()}
+              onRetry={() => holidayStore.retry()}
               onChange={patchSettings}
             />
           </AppHeader>
@@ -317,7 +305,7 @@ export function App() {
           model={cur}
           allowance={settings.allowance}
           holidaysOn={settings.holidays}
-          status={holidayStore.status(settings.country, year)}
+          status={holidayStore.status()}
           today={TODAY_KEY}
           weekStart={settings.weekStart}
           onAdd={addSuggestions}

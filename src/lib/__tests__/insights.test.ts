@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { heatLevel } from '@/components/heat-scale';
-import { RO_2026 } from '../__fixtures__/nager';
+import { RO_2026 } from '../__fixtures__/holidays';
 import { buildContext, buildYear } from '../calendar';
 import { EMPTY_LOOKUP, toHolidayMap, type HolidayLookup } from '../holidays';
 import { MIN_SUGGESTION_VALUE, buildInsights, clusterName, overlaps, planLeave, type Suggestion } from '../insights';
@@ -8,7 +8,7 @@ import { SEED_TRIPS } from '../storage';
 import type { Settings, Trip } from '../types';
 
 const RO: Settings = { holidays: true, country: 'RO', region: null, weekStart: 'Monday', allowance: 25, view: 'calendar' };
-const ro2026 = toHolidayMap(RO_2026, null, 2026);
+const ro2026 = toHolidayMap(RO_2026, 2026);
 const ro2027 = { '2027-01-01': 'New Year’s Day', '2027-01-02': 'Day after New Year’s Day', '2027-01-06': 'Epiphany', '2027-01-07': 'Saint John the Baptist' };
 const lookup: HolidayLookup = (y) => (y === 2026 ? ro2026 : y === 2027 ? ro2027 : {});
 const insightsOf = (trips: Trip[], s: Settings = RO, lk: HolidayLookup = lookup) => {
