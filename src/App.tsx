@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { AppSidebar, type HintKind, type Segment, type TripRow } from '@/components/app-sidebar';
 import type { NewBreak } from '@/components/insights-dialog';
-import { SettingsPopover } from '@/components/settings-popover';
+import { SettingsButton, SettingsPanel } from '@/components/settings-panel';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { YearCalendar } from '@/components/year-calendar';
@@ -28,7 +28,7 @@ const THIS_YEAR = Math.min(MAX_YEAR, Math.max(MIN_YEAR, TODAY.getFullYear()));
 const THIS_MONTH = TODAY.getMonth();
 const TODAY_KEY = iso(TODAY.getFullYear(), THIS_MONTH, TODAY.getDate());
 const EMPTY_DRAFT: Draft = { name: '', from: '', to: '' };
-const SIDEBAR_STYLE = { '--sidebar-width': '18rem' } as CSSProperties;
+const SIDEBAR_STYLE = { '--sidebar-width': '18rem', '--settings-width': '20rem' } as CSSProperties;
 
 export function App() {
   const [initial] = useState(() => load());
@@ -51,6 +51,13 @@ export function App() {
     setInsightsMounted(true);
     setInsightsOpen(true);
   };
+
+  // ---- The settings panel: a column beside the calendar on wider screens, a sheet on phones, each with its own open state
+  // like the sidebar's open and openMobile. Both start closed and are not remembered.
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsMobile, setSettingsMobile] = useState(false);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
+  const toggleSettings = () => (isMobile ? setSettingsMobile((v) => !v) : setSettingsOpen((v) => !v));
 
   // ---- Persistence: write after every change to trips or settings (not on first load).
   const loadedRef = useRef(false);
@@ -281,19 +288,26 @@ export function App() {
             onToday={goToday}
             onOpenInsights={openInsights}
           >
-            <SettingsPopover
-              settings={settings}
-              year={year}
-              countries={holidayStore.countries()}
-              regions={holidayStore.regions(settings.country)}
-              holidayCount={countHolidays(lookup(year))}
-              status={holidayStore.status()}
-              onRetry={() => holidayStore.retry()}
-              onChange={patchSettings}
-            />
+            <SettingsButton ref={settingsButtonRef} open={isMobile ? settingsMobile : settingsOpen} onClick={toggleSettings} />
           </AppHeader>
           <YearCalendar years={years} view={settings.view} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} />
         </SidebarInset>
+        <SettingsPanel
+          isMobile={isMobile}
+          open={settingsOpen}
+          onOpenChange={setSettingsOpen}
+          openMobile={settingsMobile}
+          onOpenMobileChange={setSettingsMobile}
+          triggerRef={settingsButtonRef}
+          settings={settings}
+          year={year}
+          countries={holidayStore.countries()}
+          regions={holidayStore.regions(settings.country)}
+          holidayCount={countHolidays(lookup(year))}
+          status={holidayStore.status()}
+          onRetry={() => holidayStore.retry()}
+          onChange={patchSettings}
+        />
         {insightsMounted && (
           <Suspense fallback={null}>
             <InsightsDialog

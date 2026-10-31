@@ -9,7 +9,7 @@ A yearly vacation planner: one client-only web page with no backend, no accounts
 - Today returns to the current year, or on phones, where months stack in one column, to the current month; the app opens there too
 - Sidebar with a summary, a New Trip form (a date-range picker, or click two days in the calendar) and the trips of the year in view; removing a trip can be undone from the toast
 - Insights dialog (the bulb beside the year) for the year in view: a map of the year, working days, weekends, public holidays on weekdays and the ones lost to a weekend, bridge days, what the leave still left can buy, and the breaks worth taking grouped around each holiday; a click adds a break to the calendar as a trip, undoable from the toast. Its code loads the first time it opens
-- Settings popover: holidays on/off, searchable country list, region, week start, days off per year, and the appearance (light, dark or system)
+- Settings panel (the Settings button), beside the calendar on the right or as a sheet on phones: holidays on/off, searchable country list, region, week start, days off per year, and the appearance (light, dark or system)
 - On phones the sidebar opens as a sheet
 
 ## Develop
@@ -28,7 +28,7 @@ Stack: Vite, TypeScript, React 19, Tailwind CSS v4 and [shadcn/ui](https://ui.sh
 Layout:
 
 - `src/lib` holds the pure logic (`dates.ts`, `holidayEngine.ts`, `holidayStore.ts`, `holidays.ts`, `calendar.ts`, `insights.ts`, `storage.ts`, `palette.ts`). `calendar.ts` builds a semantic model of every day (trip, draft, holiday, weekend; band joins; first/last day; the day's value for the heat map) and leaves colours to the components. `insights.ts` reads the year's figures and the suggested breaks off that model.
-- `src/components/ui` is the shadcn/ui registry output, as `npx shadcn add` installs it; `components.json` is configured so more components can be added the same way. `src/components` holds the app's own pieces: `app-sidebar`, `app-header`, `year-calendar`, `heat-scale`, `insights-dialog` (lazy-loaded, with its content in `insights-map` and the shared `insights-bits`), `date-range-picker`, `settings-popover`, `theme-toggle`, `theme-provider`.
+- `src/components/ui` is the shadcn/ui registry output, as `npx shadcn add` installs it; `components.json` is configured so more components can be added the same way. `src/components` holds the app's own pieces: `app-sidebar`, `app-header`, `year-calendar`, `heat-scale`, `insights-dialog` (lazy-loaded, with its content in `insights-map` and the shared `insights-bits`), `date-range-picker`, `settings-panel`, `theme-toggle`, `theme-provider`.
 - `src/hooks/use-year-scroller.ts` runs the endless year list (anchored prepends, the month at the top held in place when the width changes and the months reflow, year- and month-in-view sync, jumps to a year or a month).
 - `src/index.css` imports Tailwind and `shadcn/tailwind.css` and defines the design tokens as CSS custom properties, plus three small utilities that colour trip days from a `--trip` custom property and the `--heat-1`…`--heat-4` ramp of the heat map with a darker `--heat-N-free` shade per step for the free days inside a break (one orange hue; dark mode has its own steps).
 

@@ -8,7 +8,7 @@ const OPTIONS: { value: Theme; label: string; Icon: typeof SunIcon }[] = [
   { value: 'system', label: 'System', Icon: MonitorIcon },
 ];
 
-/** Light, dark or system appearance as one row of three, for the Settings popover. */
+/** Light, dark or system appearance as one row of three, for the Settings panel. */
 export function ThemeToggle({ labelledBy }: { labelledBy?: string }) {
   const { theme, setTheme } = useTheme();
   return (
