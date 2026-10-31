@@ -5,6 +5,7 @@ export const STORE_KEY = 'vp-apple-v1';
 export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export const SEED_TRIPS: Trip[] = [
@@ -14,7 +15,7 @@ export const SEED_TRIPS: Trip[] = [
 ];
 
 export const COUNTRY_RE = /^[A-Z]{2}$/;
-export const REGION_RE = /^[A-Z]{2}-[A-Z0-9]{1,3}$/;
+export const REGION_RE = /^[A-Z]{2}-[A-Za-z0-9]{1,16}$/; // '<country>-<subdivision>' as the holiday rules list it
 
 const BY_TZ: Record<string, string> = {
   'Europe/Bucharest': 'RO',
@@ -63,7 +64,7 @@ function isTrip(v: unknown): v is Trip {
   return typeof t.id === 'string' && typeof t.name === 'string' && typeof t.from === 'string' && typeof t.to === 'string' && typeof t.color === 'string';
 }
 
-/** Region codes from the first release, before holidays came from Nager.Date. */
+/** Region codes from the first release, which had a fixed list of regions instead of a country and a region. */
 const LEGACY_COUNTRIES: Record<string, { country: string; region: string | null }> = {
   'GB-EAW': { country: 'GB', region: 'GB-ENG' },
   'GB-SCT': { country: 'GB', region: 'GB-SCT' },
@@ -101,11 +102,15 @@ function defaultStorage(): StorageLike | null {
   }
 }
 
+/** Keys of the holiday cache earlier releases kept; holidays are computed locally now. */
+export const STALE_KEYS = ['vp-holidays-v1', 'vp-countries-v1'];
+
 /** Reads the store once; a missing, corrupt or blocked store falls back to defaults and seeds. */
 export function load(storage: StorageLike | null = defaultStorage()): Stored {
   let saved: unknown = null;
   try {
     saved = JSON.parse(storage?.getItem(STORE_KEY) || 'null');
+    for (const k of STALE_KEYS) storage?.removeItem?.(k);
   } catch {
     saved = null;
   }

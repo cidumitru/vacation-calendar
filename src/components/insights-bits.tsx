@@ -51,7 +51,7 @@ export function ValueBadge({ value, className }: { value: number; className?: st
 export function suggestionNote(p: InsightsViewProps): string | null {
   if (!p.holidaysOn) return 'Public holidays are off. Turn them on in Settings and the breaks worth taking around them show here.';
   if (!p.status.loaded && p.status.loading) return 'Loading public holidays…';
-  if (!p.status.loaded && p.status.error) return `Couldn’t load public holidays for ${p.insights.year}: ${p.status.error}.`;
+  if (!p.status.loaded && p.status.error) return `Couldn’t load public holidays: ${p.status.error}.`;
   if (p.insights.clusters.length === 0) return `No public holiday in ${p.insights.year} falls where a few days of leave would buy a long break.`;
   return null;
 }

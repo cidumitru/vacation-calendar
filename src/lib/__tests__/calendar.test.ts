@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { RO_2026 } from '../__fixtures__/nager';
+import { RO_2026 } from '../__fixtures__/holidays';
 import { bestBlock, buildContext, buildYear, count, draftRange, freeFn, isFree, valueOf } from '../calendar';
 import { EMPTY_LOOKUP, toHolidayMap, type HolidayLookup } from '../holidays';
 import { SEED_TRIPS } from '../storage';
 import type { Settings, Trip } from '../types';
 
 const RO: Settings = { holidays: true, country: 'RO', region: null, weekStart: 'Monday', allowance: 25, view: 'calendar' };
-const ro2026 = toHolidayMap(RO_2026, null, 2026);
+const ro2026 = toHolidayMap(RO_2026, 2026);
 // 2027: the January holidays, for the cross-year and block tests below.
 const ro2027 = {
   '2027-01-01': 'New Year’s Day',

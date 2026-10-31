@@ -3,7 +3,7 @@
 A yearly vacation planner: one client-only web page with no backend, no accounts and no sync. Trips and settings live in the browser's `localStorage`.
 
 - Endless calendar of years (1950–2099) with weekends and public holidays marked; holiday names show in a tooltip on hover or keyboard focus
-- Public holidays for every country [Nager.Date](https://date.nager.at) covers, with an optional region (ISO 3166-2 subdivision) for countries whose holidays differ by state or nation
+- Public holidays for 200+ countries, computed in the browser from the rules of [date-holidays](https://github.com/commenthol/date-holidays), with an optional region for the countries whose holidays differ by state or nation
 - Days-off counting per calendar year: weekends and holidays are free
 - A heat map view (the flame button in the header) that shades every working day by its value: the most days off per day of leave that a block of up to a working week through it can buy around a public holiday. A regular Monday or Friday with nothing else around stays bare, bridge days next to public holidays glow, a day that joins two hits into one long break gets heat too, and the weekends and holidays inside a break take its heat so the whole length of a vacation shows as one band; hover or focus a shaded day for the figures and the block
 - Today returns to the current year, or on phones, where months stack in one column, to the current month; the app opens there too
@@ -27,7 +27,7 @@ Stack: Vite, TypeScript, React 19, Tailwind CSS v4 and [shadcn/ui](https://ui.sh
 
 Layout:
 
-- `src/lib` holds the pure logic (`dates.ts`, `nager.ts`, `holidayStore.ts`, `holidays.ts`, `calendar.ts`, `insights.ts`, `storage.ts`, `palette.ts`). `calendar.ts` builds a semantic model of every day (trip, draft, holiday, weekend; band joins; first/last day; the day's value for the heat map) and leaves colours to the components. `insights.ts` reads the year's figures and the suggested breaks off that model.
+- `src/lib` holds the pure logic (`dates.ts`, `holidayEngine.ts`, `holidayStore.ts`, `holidays.ts`, `calendar.ts`, `insights.ts`, `storage.ts`, `palette.ts`). `calendar.ts` builds a semantic model of every day (trip, draft, holiday, weekend; band joins; first/last day; the day's value for the heat map) and leaves colours to the components. `insights.ts` reads the year's figures and the suggested breaks off that model.
 - `src/components/ui` is the shadcn/ui registry output, as `npx shadcn add` installs it; `components.json` is configured so more components can be added the same way. `src/components` holds the app's own pieces: `app-sidebar`, `app-header`, `year-calendar`, `heat-scale`, `insights-dialog` (lazy-loaded, with its content in `insights-map` and the shared `insights-bits`), `date-range-picker`, `settings-popover`, `theme-toggle`, `theme-provider`.
 - `src/hooks/use-year-scroller.ts` runs the endless year list (anchored prepends, year- and month-in-view sync, jumps to a year or a month).
 - `src/index.css` imports Tailwind and `shadcn/tailwind.css` and defines the design tokens as CSS custom properties, plus three small utilities that colour trip days from a `--trip` custom property and the `--heat-1`…`--heat-4` ramp of the heat map with a darker `--heat-N-free` shade per step for the free days inside a break (one orange hue; dark mode has its own steps).
@@ -48,12 +48,11 @@ The dialog shows this as a year map, twelve month strips with holidays red, brea
 
 ## Public holidays
 
-Holidays come from the Nager.Date API, one request per country and year, only for the years on screen:
+Holidays are computed in the browser from the rules of [date-holidays](https://github.com/commenthol/date-holidays) (data CC BY-SA 3.0). Nothing is fetched from a holiday API, so the data works offline and for any year of the calendar:
 
-- `GET https://date.nager.at/api/v3/PublicHolidays/{year}/{country}` and `GET /api/v3/AvailableCountries` (the country list in Settings).
-- Only entries typed `Public` count as a day off. A holiday applies when it is nationwide (`global`) or its `counties` include the selected region.
-- Responses are cached in memory and in `localStorage` (`vp-holidays-v1`, `vp-countries-v1`), capped at 200 country-years. An entry older than 30 days is shown at once and refreshed in the background.
-- Offline or on an error, saved data keeps working; a year with no data shows the error in Settings with a Retry button and its holidays simply cost like weekdays until data arrives.
+- `holidayEngine.ts` wraps the library: the country list, the regions of a country (`<country>-<subdivision>`, e.g. `GB-SCT`) and the holidays of a country, region and year as `{ date, name, type }`, one entry per day for a holiday that spans several (Eid, Korean New Year, Romania's two days of New Year).
+- Only entries typed `public` count as a day off; bank, school, optional and observance days are kept out. With a region selected, its holidays are added to the nationwide ones.
+- The rules for all countries weigh about 250 KB gzipped, so `holidayStore.ts` loads the engine as its own chunk once holidays are on and memoises results per country, region and year; the calendar paints before the rules arrive. Should the chunk fail to download, Settings shows the error with a Retry button and holidays simply cost like weekdays until it loads.
 
 ## Deploy to GitHub Pages
 
@@ -67,4 +66,4 @@ For a user or organisation site, or a custom domain, set `BASE_PATH` to `/` in t
 
 ## Storage
 
-`vp-apple-v1` holds `{ trips, settings }` (settings include the calendar view, `calendar` or `heatmap`); `vp-holidays-v1` and `vp-countries-v1` hold the Nager.Date cache; `vp-theme` holds the appearance choice (Settings). A missing, corrupt or blocked store falls back to the defaults and three seed trips for 2026. Clear site data to start over.
+`vp-apple-v1` holds `{ trips, settings }` (settings include the calendar view, `calendar` or `heatmap`); `vp-theme` holds the appearance choice (Settings). The holiday caches of earlier releases (`vp-holidays-v1`, `vp-countries-v1`) are removed on load. A missing, corrupt or blocked store falls back to the defaults and three seed trips for 2026. Clear site data to start over.
