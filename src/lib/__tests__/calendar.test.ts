@@ -48,6 +48,23 @@ describe('Counting days off', () => {
     expect(y27.offBy.x).toBe(2);
   });
 
+  it('a trip being changed is drawn as the draft on its new days but still counts its saved cost', () => {
+    // Summer (18 Jul – 2 Aug) is being moved a week later: 25 Jul – 9 Aug.
+    const ctx = buildContext(SEED_TRIPS, '2026-07-25', '2026-08-09', RO, lookup, 'seed1');
+    const year = buildYear(2026, ctx);
+    const cell = (key: string) => year.months[Number(key.slice(5, 7)) - 1].cells.find((c) => c?.key === key)!;
+    expect(cell('2026-07-20').kind).toBe('plain'); // an old day outside the new range: no band at all
+    expect(cell('2026-07-28').kind).toBe('draft'); // inside both: the draft, not the trip
+    expect(cell('2026-08-05').kind).toBe('draft');
+    expect(cell('2026-08-09').end).toBe(true);
+    expect(cell('2026-02-17').kind).toBe('trip'); // the other trips keep their bands
+    // The totals still show the saved trip until it is saved again.
+    expect(year.used).toBe(17);
+    expect(year.offBy.seed1).toBe(10);
+    // Without an id the trip stays a trip and the overlapping draft gives way to it.
+    expect(buildYear(2026, ctxOf(SEED_TRIPS, '2026-07-25', '2026-08-09')).months[6].cells.find((c) => c?.key === '2026-07-28')!.kind).toBe('trip');
+  });
+
   it('month header counts the cost inside that month', () => {
     const year = buildYear(2026, ctxOf(SEED_TRIPS));
     expect(year.months[6].off).toBe(10); // Summer: 18 Jul – 2 Aug, July part

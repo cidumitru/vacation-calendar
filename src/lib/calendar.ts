@@ -184,6 +184,8 @@ export interface BuildContext {
   pb: string;
   dFrom: string;
   dTo: string;
+  /** The trip the draft is changing, or '': its band gives way to the draft's, though its days still count as planned. */
+  editId: string;
 }
 
 export function buildContext(
@@ -192,12 +194,13 @@ export function buildContext(
   dTo: string,
   settings: Settings,
   lookup: HolidayLookup = EMPTY_LOOKUP,
+  editId = '',
 ): BuildContext {
   const own = Array.isArray(trips) ? ownMap(trips) : trips;
   const [pa, pb] = draftRange(dFrom, dTo);
   const prev: Record<string, true> = {};
   if (pa) eachDay(pa, pb, (k) => { prev[k] = true; });
-  return { own, prev, settings, lookup, sunFirst: settings.weekStart === 'Sunday', pa, pb, dFrom, dTo };
+  return { own, prev, settings, lookup, sunFirst: settings.weekStart === 'Sunday', pa, pb, dFrom, dTo, editId };
 }
 
 interface DayInfo {
@@ -206,7 +209,10 @@ interface DayInfo {
   g: number;
   we: boolean;
   hol: string;
+  /** The trip drawn on the day: not the one being changed, whose days are drawn as the draft or as free days. */
   t: Trip | undefined;
+  /** The trip whose cost the day counts towards, the one being changed included. */
+  cost: Trip | undefined;
   pv: boolean;
   /** Days with the same band key join into one pill across the week row. */
   band: string;
@@ -259,10 +265,11 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
       const g = (g1 + d - 1) % 7;
       const we = g === 0 || g === 6;
       const hol = H[key] || '';
-      const t = ctx.own[key];
+      const cost = ctx.own[key];
+      const t = cost && cost.id !== ctx.editId ? cost : undefined;
       const pv = !t && !!ctx.prev[key];
       const band = t ? `t:${t.id}` : pv ? 'p' : hol ? 'h' : we ? 'w' : '';
-      info.push({ d, key, g, we, hol, t, pv, band, col: (lead + d - 1) % 7 });
+      info.push({ d, key, g, we, hol, t, cost, pv, band, col: (lead + d - 1) % 7 });
     }
 
     const cells: (DayCell | null)[] = [];
@@ -271,10 +278,11 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
 
     info.forEach((c, ix) => {
       const free = c.we || !!c.hol;
-      if (c.t && !free) {
+      // The trip being changed keeps its saved cost until it is saved again, so the totals do not jump while picking.
+      if (c.cost && !free) {
         off++;
         used++;
-        offBy[c.t.id] = (offBy[c.t.id] || 0) + 1;
+        offBy[c.cost.id] = (offBy[c.cost.id] || 0) + 1;
       }
       // Join bands of the same kind across the row (never across the week edge).
       const joinLeft = !!c.band && c.col !== 0 && ix > 0 && info[ix - 1].band === c.band;
