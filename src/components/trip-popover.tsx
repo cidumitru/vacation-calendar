@@ -2,18 +2,22 @@
 // that day asking for the last one, taking no focus so the next click lands on a day; after the second the form,
 // anchored to the day clicked: the dates (a date-range picker to adjust them), what they cost, a name, Add and Cancel.
 // It follows its day as the calendar scrolls, hides while that day is off screen, stays open when something else is
-// clicked (another day simply starts a new pick), and Escape cancels. On phones the first day is picked from the
-// day's own sheet, and the form opens as a sheet from the bottom once the last day is tapped.
+// clicked (another day simply starts a new pick), and Escape cancels. On phones there is no second click: a tap opens
+// the form as a sheet from the bottom with that day picked, its picker stretches the dates, and when the day sits
+// in a break worth taking one tap sets the dates to that break.
 
-import { PlusIcon, XIcon } from 'lucide-react';
+import { PlusIcon, SparklesIcon, XIcon } from 'lucide-react';
 import { useEffect, useRef, type FormEvent, type RefObject } from 'react';
 import { DateRangePicker } from '@/components/date-range-picker';
+import { heatLevel } from '@/components/heat-scale';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { useDayAnchor } from '@/hooks/use-day-anchor';
 import { useDragDown } from '@/hooks/use-drag-down';
+import type { DayCell } from '@/lib/calendar';
+import { fmt } from '@/lib/dates';
 import type { Draft, WeekStart } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -25,6 +29,8 @@ interface Props {
   scrollerRef: RefObject<HTMLDivElement | null>;
   /** Changes whenever the set of mounted years changes, so a day that was not rendered yet is looked up again. */
   mountedYears: string;
+  /** The day the form sits on, for the line on phones that says what a day of leave there is worth. */
+  tapped: DayCell | null;
   /** "Fri 6 Mar – Tue 10 Mar", or the first day alone while the last is still to be picked. */
   rangeText: string;
   /** "5 days · 3 off work · includes Labour Day". */
@@ -149,9 +155,20 @@ function TripCard(p: FormProps & { complete: boolean }) {
   );
 }
 
+/** "One day of leave here buys 5 days off, Sat 28 Nov – Wed 2 Dec.", for a day in a break worth taking; '' otherwise. */
+function worthOf(c: DayCell | null, year: number): string {
+  const b = c?.best;
+  if (!c || !b || heatLevel(c.value) === 0) return '';
+  const off = `${b.off} days off, ${fmt(b.start, year)} – ${fmt(b.end, year)}`;
+  return b.leave === 1 ? `One day of leave here buys ${off}.` : `${b.leave} days of leave, ${fmt(b.from, year)} – ${fmt(b.to, year)}, buy ${off}.`;
+}
+
 /** Phones: the form as a modal sheet from the bottom, with the name field focused once it is up. */
 function TripSheet(p: FormProps & { open: boolean }) {
   const drag = useDragDown(p.onClear);
+  const worth = worthOf(p.tapped, p.yearInView);
+  const block = p.tapped?.best;
+  const onBlock = !!block && p.draft.from === block.start && p.draft.to === block.end;
   return (
     <Sheet
       open={p.open}
@@ -173,10 +190,16 @@ function TripSheet(p: FormProps & { open: boolean }) {
           <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-muted-foreground/30" aria-hidden="true" />
           <SheetHeader className="px-4 pt-3 pb-1">
             <SheetTitle>New trip</SheetTitle>
-            <SheetDescription>Adjust the dates, give it a name and add it.</SheetDescription>
+            <SheetDescription>{worth || 'Stretch the dates in the picker, give it a name and add it.'}</SheetDescription>
           </SheetHeader>
         </div>
-        <div className="px-4 pt-2">
+        <div className="flex flex-col gap-3 px-4 pt-2">
+          {worth && block && !onBlock && (
+            <Button type="button" variant="secondary" size="lg" onClick={() => p.onRangeChange(block.start, block.end)}>
+              <SparklesIcon />
+              Use this break · {block.off} days off for {block.leave === 1 ? '1 day' : `${block.leave} days`}
+            </Button>
+          )}
           <TripForm {...p} />
         </div>
       </SheetContent>

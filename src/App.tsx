@@ -2,7 +2,6 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useS
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { AppSidebar, type Segment, type TripRow } from '@/components/app-sidebar';
-import { DaySheet } from '@/components/day-sheet';
 import type { NewBreak } from '@/components/insights-dialog';
 import { SettingsButton, SettingsPanel } from '@/components/settings-panel';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
@@ -11,9 +10,9 @@ import { TripPopover } from '@/components/trip-popover';
 import { YearCalendar } from '@/components/year-calendar';
 import { isMobileViewport, useIsMobile } from '@/hooks/use-mobile';
 import { useYearScroller } from '@/hooks/use-year-scroller';
-import { buildContext, buildYear, count, draftRange, ownMap, type Block, type DayCell, type YearModel } from '@/lib/calendar';
+import { buildContext, buildYear, count, draftRange, ownMap, type DayCell, type YearModel } from '@/lib/calendar';
 import { daysBetween, eachDay, fmt, iso, yearOf } from '@/lib/dates';
-import { breakName, countHolidays, toHolidayMap, type HolidayLookup, type HolidayMap } from '@/lib/holidays';
+import { countHolidays, toHolidayMap, type HolidayLookup, type HolidayMap } from '@/lib/holidays';
 import { holidayStore } from '@/lib/holidayStore';
 import { PALETTE } from '@/lib/palette';
 import { load, save } from '@/lib/storage';
@@ -40,8 +39,6 @@ export function App() {
   // The day the trip popover sits on: the day clicked last, or the end of a range picked in its date picker.
   const [anchorKey, setAnchorKey] = useState('');
   const [err, setErr] = useState('');
-  // On phones a tap shows the day first, in a sheet (see day-sheet); the trip starts or ends from the buttons there.
-  const [dayInfo, setDayInfo] = useState('');
   // On phones the months stack in one column, so "today" is the current month there; on wider screens it is the year.
   const isMobile = useIsMobile();
   const isMobileRef = useRef(isMobile);
@@ -139,43 +136,22 @@ export function App() {
     setErr('');
   };
 
-  const draftRef = useRef(draft);
-  draftRef.current = draft;
   const tapDay = useCallback((key: string) => {
     setErr('');
+    setAnchorKey(key);
+    // On phones there is no second click: the form opens with the day picked, and its picker stretches the dates.
     if (isMobileRef.current) {
-      // A tap while the form is open starts over; the day's own buttons do the rest.
-      if (draftRef.current.to) {
-        setDraft(EMPTY_DRAFT);
-        setAnchorKey('');
-      }
-      setDayInfo(key);
+      setDraft((d) => ({ ...d, from: key, to: key }));
       return;
     }
-    setAnchorKey(key);
     setDraft((d) => {
       if (!d.from || d.to) return { ...d, from: key, to: '' };
       if (key < d.from) return { ...d, from: key, to: d.from };
       return { ...d, to: key };
     });
   }, []);
-
-  // ---- The day sheet's buttons (phones). The sheet stays up after the first day, saying to tap the last one.
-  const startAt = (key: string) => {
-    setDraft({ name: '', from: key, to: '' });
-    setAnchorKey(key);
-    setErr('');
-  };
-  const endAt = (key: string) => {
-    setDraft((d) => (key < d.from ? { ...d, from: key, to: d.from } : { ...d, to: key }));
-    setAnchorKey(key);
-    setDayInfo('');
-  };
-  const cancelPick = () => {
-    clearDraft();
-    setDayInfo('');
-  };
-  const dayCell: DayCell | null = dayInfo ? (yearModel(yearOf(dayInfo)).months[Number(dayInfo.slice(5, 7)) - 1].cells.find((c) => c?.key === dayInfo) ?? null) : null;
+  /** The day the form sits on, for the line that says what a day of leave there is worth. */
+  const tapped: DayCell | null = anchorKey ? (yearModel(yearOf(anchorKey)).months[Number(anchorKey.slice(5, 7)) - 1].cells.find((c) => c?.key === anchorKey) ?? null) : null;
 
   const addTrip = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -218,11 +194,6 @@ export function App() {
     return names;
   };
 
-  /** The best block through a day, taken whole as a trip, from the day info. */
-  const takeBreak = (b: Block) => {
-    addBreaks([{ name: breakName(holidayNamesIn(b.start, b.end)), from: b.start, to: b.end, off: b.off, leave: b.leave }]);
-    setDayInfo('');
-  };
 
   /** Adds suggested breaks as trips, each over its whole break so that it shows as one band; a break that now clashes is skipped. */
   const addBreaks = (breaks: NewBreak[]) => {
@@ -341,6 +312,7 @@ export function App() {
             anchorKey={anchorKey}
             scrollerRef={scroller.ref}
             mountedYears={`${yFrom}-${yTo}`}
+            tapped={tapped}
             rangeText={rangeText}
             summary={summary}
             error={err}
@@ -353,21 +325,6 @@ export function App() {
             onRangeChange={setRange}
             onClear={clearDraft}
             onAdd={addTrip}
-          />
-          <DaySheet
-            cell={dayCell}
-            trip={dayInfo ? (own[dayInfo] ?? null) : null}
-            draftFrom={draft.to ? '' : draft.from}
-            year={year}
-            onClose={() => setDayInfo('')}
-            onStart={startAt}
-            onEnd={endAt}
-            onCancelPick={cancelPick}
-            onTakeBreak={takeBreak}
-            onRemoveTrip={(id) => {
-              removeTrip(id);
-              setDayInfo('');
-            }}
           />
         </SidebarInset>
         <SettingsPanel
