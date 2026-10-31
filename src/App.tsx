@@ -28,7 +28,7 @@ const TODAY = new Date();
 const THIS_YEAR = Math.min(MAX_YEAR, Math.max(MIN_YEAR, TODAY.getFullYear()));
 const THIS_MONTH = TODAY.getMonth();
 const TODAY_KEY = iso(TODAY.getFullYear(), THIS_MONTH, TODAY.getDate());
-const EMPTY_DRAFT: Draft = { name: '', from: '', to: '' };
+const EMPTY_DRAFT: Draft = { id: '', name: '', from: '', to: '' };
 const SIDEBAR_STYLE = { '--sidebar-width': '18rem', '--settings-width': '20rem' } as CSSProperties;
 
 export function App() {
@@ -99,7 +99,9 @@ export function App() {
 
   // ---- Year models, cached until trips, the draft, settings or holiday data change.
   const own = useMemo(() => ownMap(trips), [trips]);
-  const ctx = useMemo(() => buildContext(own, draft.from, draft.to, settings, lookup), [own, draft.from, draft.to, settings, lookup]);
+  const ownRef = useRef(own);
+  ownRef.current = own;
+  const ctx = useMemo(() => buildContext(own, draft.from, draft.to, settings, lookup, draft.id), [own, draft.from, draft.to, settings, lookup, draft.id]);
   const cacheRef = useRef<{ ctx: typeof ctx; years: Map<number, YearModel> } | null>(null);
   if (!cacheRef.current || cacheRef.current.ctx !== ctx) cacheRef.current = { ctx, years: new Map() };
   const cache = cacheRef.current.years;
@@ -139,20 +141,40 @@ export function App() {
   const tapDay = useCallback((key: string) => {
     setErr('');
     setAnchorKey(key);
-    // On phones there is no second click: the sheet opens with the day as the first day, and the last day is picked in it.
-    if (isMobileRef.current) {
-      setDraft((d) => ({ ...d, from: key, to: '' }));
-      return;
-    }
+    const trip = ownRef.current[key];
     setDraft((d) => {
-      if (!d.from || d.to) return { ...d, from: key, to: '' };
+      // A day of a trip opens that trip, with Change and Remove, unless a pick is half way on desktop (the day is then
+      // the last one) or the trip is the one being changed (its old days are picked like any other day).
+      const halfWay = !!d.from && !d.to && !isMobileRef.current;
+      if (trip && trip.id !== d.id && !halfWay) return EMPTY_DRAFT;
+      // On phones there is no second click: the sheet opens with the day as the first day, and the last day is picked in it.
+      if (isMobileRef.current || !d.from || d.to) return { ...d, from: key, to: '' };
       if (key < d.from) return { ...d, from: key, to: d.from };
       return { ...d, to: key };
     });
   }, []);
   /** The day the form sits on, for the line that says what a day of leave there is worth. */
   const tapped: DayCell | null = anchorKey ? (yearModel(yearOf(anchorKey)).months[Number(anchorKey.slice(5, 7)) - 1].cells.find((c) => c?.key === anchorKey) ?? null) : null;
+  /** The trip the popover shows, when the day clicked is in one and nothing is being picked: Change or Remove. */
+  const shownTrip: Trip | null = (anchorKey && !draft.from && own[anchorKey]) || null;
 
+  /** Change: the form opens on the trip's days and name; the calendar draws them as the draft from here on. */
+  const editTrip = () => {
+    if (!shownTrip) return;
+    setDraft({ id: shownTrip.id, name: shownTrip.name, from: shownTrip.from, to: shownTrip.to });
+    setErr('');
+  };
+
+  // A trip removed from the sidebar while its form is open takes the form with it.
+  useEffect(() => {
+    if (draft.id && !trips.some((t) => t.id === draft.id)) {
+      setDraft(EMPTY_DRAFT);
+      setAnchorKey('');
+      setErr('');
+    }
+  }, [trips, draft.id]);
+
+  /** Add, or Save when the draft is changing a trip: the same checks, then a new trip or the old one on its new days. */
   const addTrip = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const [a, b] = draftRange(draft.from, draft.to);
@@ -163,19 +185,28 @@ export function App() {
     }
     const days: string[] = [];
     eachDay(a, b, (k) => days.push(k));
-    const clash = days.map((k) => own[k]).find(Boolean);
+    const clash = days.map((k) => own[k]).find((t) => t && t.id !== draft.id);
     if (clash) {
       setErr(`Those dates overlap “${clash.name}”. Pick other days.`);
       return;
     }
-    const trip: Trip = {
-      id: 't' + Date.now().toString(36),
-      name: draft.name.trim() || `Trip ${trips.length + 1}`,
-      from: a,
-      to: b,
-      color: PALETTE[trips.length % PALETTE.length],
-    };
-    setTrips([...trips, trip]);
+    const before = trips.find((t) => t.id === draft.id);
+    if (before) {
+      const after: Trip = { ...before, name: draft.name.trim() || before.name, from: a, to: b };
+      setTrips((ts) => ts.map((t) => (t.id === before.id ? after : t)));
+      toast(`Changed “${after.name}”`, {
+        action: { label: 'Undo', onClick: () => setTrips((ts) => ts.map((t) => (t.id === before.id ? before : t))) },
+      });
+    } else {
+      const trip: Trip = {
+        id: 't' + Date.now().toString(36),
+        name: draft.name.trim() || `Trip ${trips.length + 1}`,
+        from: a,
+        to: b,
+        color: PALETTE[trips.length % PALETTE.length],
+      };
+      setTrips([...trips, trip]);
+    }
     setDraft(EMPTY_DRAFT);
     setAnchorKey('');
     setErr('');
@@ -249,12 +280,13 @@ export function App() {
   // ---- Settings.
   const patchSettings = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
 
-  // ---- The draft, as the popover words it: the dates, and what they cost, naming the public holidays inside.
-  const rangeText = pa ? `${fmt(pa, year)}${pb !== pa ? ` – ${fmt(pb, year)}` : ''}` : '';
+  // ---- The draft, or the trip shown, as the popover words it: the dates, and what they cost, naming the public holidays inside.
+  const [ra, rb] = pa ? [pa, pb] : shownTrip ? [shownTrip.from, shownTrip.to] : ['', ''];
+  const rangeText = ra ? `${fmt(ra, year)}${rb !== ra ? ` – ${fmt(rb, year)}` : ''}` : '';
   let summary = '';
-  if (pa) {
-    const c = count(pa, pb, settings, lookup);
-    const names = holidayNamesIn(pa, pb);
+  if (ra) {
+    const c = count(ra, rb, settings, lookup);
+    const names = holidayNamesIn(ra, rb);
     summary = `${plural(c.all, 'day')} · ${c.off} off work`;
     if (names.length) summary += ` · includes ${names.length <= 2 ? names.join(' and ') : `${names[0]} and ${names.length - 1} more`}`;
   }
@@ -309,6 +341,7 @@ export function App() {
           <YearCalendar years={years} view={settings.view} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} onOpenInsights={openInsights} />
           <TripPopover
             draft={draft}
+            trip={shownTrip}
             anchorKey={anchorKey}
             scrollerRef={scroller.ref}
             mountedYears={`${yFrom}-${yTo}`}
@@ -325,6 +358,11 @@ export function App() {
             onRangeChange={setRange}
             onClear={clearDraft}
             onAdd={addTrip}
+            onEdit={editTrip}
+            onRemove={() => {
+              if (shownTrip) removeTrip(shownTrip.id);
+              clearDraft();
+            }}
           />
         </SidebarInset>
         <SettingsPanel

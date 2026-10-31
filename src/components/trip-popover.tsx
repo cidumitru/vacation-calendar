@@ -2,11 +2,14 @@
 // that day asking for the last one, taking no focus so the next click lands on a day; after the second the form,
 // anchored to the day clicked: the first and last day, each a picker, what they cost, a name, Add and Cancel. It
 // follows its day as the calendar scrolls, hides while that day is off screen, stays open when something else is
-// clicked (another day simply starts a new pick), and Escape cancels. On phones there is no second click: a tap
-// opens a small sheet from the bottom with the day and one button, Start a break here, and that button grows the
-// sheet into the form with the day as the first day; the last day is picked there, and when the day sits in a break
-// worth taking one tap sets both to that break.
-import { CalendarPlusIcon, PlusIcon, SparklesIcon, XIcon } from 'lucide-react';
+// clicked (another day simply starts a new pick), and Escape cancels. A click on a day that is already in a trip shows
+// that trip instead, with Change and Remove: Change turns the card into the same form on the trip's days and name,
+// with Save in place of Add, and the calendar draws those days as the draft until they are saved. On phones there is
+// no second click: a tap opens a small sheet from the bottom with the day and one button, Start a break here, and that
+// button grows the sheet into the form with the day as the first day; the last day is picked there, and when the day
+// sits in a break worth taking one tap sets both to that break. A tap on a trip's day opens the sheet on the trip,
+// with Change and Remove, and Change grows it into the form the same way.
+import { CalendarPlusIcon, CheckIcon, PencilIcon, PlusIcon, SparklesIcon, Trash2Icon, XIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { DatePicker } from '@/components/date-picker';
@@ -19,11 +22,13 @@ import { useDayAnchor } from '@/hooks/use-day-anchor';
 import { useDragDown } from '@/hooks/use-drag-down';
 import type { DayCell } from '@/lib/calendar';
 import { fmt } from '@/lib/dates';
-import type { Draft, WeekStart } from '@/lib/types';
+import type { Draft, Trip, WeekStart } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface Props {
   draft: Draft;
+  /** The trip the day clicked is in, while nothing is being picked or changed: shown with Change and Remove. */
+  trip: Trip | null;
   /** The day the popover sits on: the day clicked last, or the end of a range picked in the picker. '' hides it. */
   anchorKey: string;
   /** The calendar's scroller, where the day's cell is found by its data-day attribute. */
@@ -32,9 +37,9 @@ interface Props {
   mountedYears: string;
   /** The day the form sits on, for the line on phones that says what a day of leave there is worth. */
   tapped: DayCell | null;
-  /** "Fri 6 Mar – Tue 10 Mar", or the first day alone while the last is still to be picked. */
+  /** "Fri 6 Mar – Tue 10 Mar" of the draft, or of the trip shown; the first day alone while the last is still to be picked. */
   rangeText: string;
-  /** "5 days · 3 off work · includes Labour Day". */
+  /** "5 days · 3 off work · includes Labour Day", of the draft or of the trip shown. */
   summary: string;
   /** Why the trip cannot be added, or ''. */
   error: string;
@@ -46,23 +51,40 @@ interface Props {
   onNameChange: (name: string) => void;
   onRangeChange: (from: string, to: string) => void;
   onClear: () => void;
+  /** Adds the draft, or saves the trip it is changing. */
   onAdd: (e: FormEvent<HTMLFormElement>) => void;
+  /** Change, on the trip shown: the form opens on its days and name. */
+  onEdit: () => void;
+  /** Remove, on the trip shown. */
+  onRemove: () => void;
 }
 
 export function TripPopover(p: Props) {
   const complete = !!p.draft.from && !!p.draft.to;
   const inputRef = useRef<HTMLInputElement>(null);
-  // On phones the sheet opens on the first day alone; the last day is picked in it.
-  if (p.isMobile) return <TripSheet {...p} open={!!p.draft.from} inputRef={inputRef} />;
+  // On phones the sheet opens on the first day alone, or on the trip tapped; the last day is picked in it.
+  if (p.isMobile) return <TripSheet {...p} open={!!p.draft.from || !!p.trip} inputRef={inputRef} />;
   return <TripCard {...p} complete={complete} inputRef={inputRef} />;
 }
 
 type FormProps = Props & { inputRef: RefObject<HTMLInputElement | null> };
 
-/** The form itself: the first and last day, what they cost, the name, Add and Cancel. */
+/** The form itself: the first and last day, what they cost, the name, Add (or Save) and Cancel. */
 function TripForm({ hint, ...p }: FormProps & { hint?: boolean }) {
+  const editing = !!p.draft.id;
   const pick = (from: string, to: string) => (to && to < from ? p.onRangeChange(to, from) : p.onRangeChange(from, to));
   const shared = { yearInView: p.yearInView, minYear: p.minYear, maxYear: p.maxYear, weekStart: p.weekStart };
+  const submit = editing ? (
+    <>
+      <CheckIcon />
+      {hint ? 'Save' : 'Save changes'}
+    </>
+  ) : (
+    <>
+      <PlusIcon />
+      Add trip
+    </>
+  );
   return (
     <form onSubmit={p.onAdd} className="flex flex-col gap-3">
       <div className="grid grid-cols-2 gap-2">
@@ -91,20 +113,18 @@ function TripForm({ hint, ...p }: FormProps & { hint?: boolean }) {
         <>
           <div className="flex items-center gap-2">
             <Button type="submit" className="flex-1">
-              <PlusIcon />
-              Add trip
+              {submit}
             </Button>
             <Button type="button" variant="ghost" onClick={p.onClear}>
               Cancel
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">Enter adds · Esc cancels</p>
+          <p className="text-[11px] text-muted-foreground">{editing ? 'Enter saves' : 'Enter adds'} · Esc cancels</p>
         </>
       ) : (
         <div className="flex flex-col gap-2">
           <Button type="submit" size="lg" className="w-full">
-            <PlusIcon />
-            Add trip
+            {submit}
           </Button>
           <Button type="button" variant="outline" size="lg" className="w-full" onClick={p.onClear}>
             Cancel
@@ -115,13 +135,48 @@ function TripForm({ hint, ...p }: FormProps & { hint?: boolean }) {
   );
 }
 
-/** Desktop: the note after the first click, then the form, anchored to the day clicked last. */
+/** A trip's colour as a dot before its name. */
+function Dot({ color, className }: { color: string; className?: string }) {
+  return <span className={cn('inline-block size-2.5 shrink-0 rounded-full', className)} style={{ background: color }} aria-hidden="true" />;
+}
+
+/** Desktop: the trip the day clicked is in, with Change and Remove. */
+function TripView(p: Props & { trip: Trip }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-start gap-2.5">
+        <Dot color={p.trip.color} className="mt-1.5" />
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="truncate text-sm font-medium">{p.trip.name}</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">{p.rangeText}</p>
+          <p className="text-xs text-muted-foreground">{p.summary}</p>
+        </div>
+        <Button type="button" variant="ghost" size="icon-xs" className="-mt-1 -mr-1" aria-label="Close" onClick={p.onClear}>
+          <XIcon />
+        </Button>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button type="button" variant="outline" size="sm" className="flex-1" onClick={p.onEdit}>
+          <PencilIcon />
+          Change
+        </Button>
+        <Button type="button" variant="destructive" size="sm" className="flex-1" onClick={p.onRemove}>
+          <Trash2Icon />
+          Remove
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Desktop: the trip clicked, the note after a first click, or the form, anchored to the day clicked last. */
 function TripCard(p: FormProps & { complete: boolean }) {
   const { cellEl, anchorRef } = useDayAnchor(p.anchorKey, p.scrollerRef, p.mountedYears);
   const picking = !!p.draft.from && !p.draft.to;
-  const open = !!p.draft.from && !!cellEl;
+  const editing = !!p.draft.id;
+  const open = (!!p.draft.from || !!p.trip) && !!cellEl;
 
-  // Once the range is complete the name field takes focus, so typing and Enter add the trip.
+  // Once the range is complete the name field takes focus, so typing and Enter add (or save) the trip.
   useEffect(() => {
     if (p.complete) p.inputRef.current?.focus({ preventScroll: true });
   }, [p.complete, p.inputRef]);
@@ -142,14 +197,16 @@ function TripCard(p: FormProps & { complete: boolean }) {
         hideWhenDetached
         onOpenAutoFocus={(e) => e.preventDefault()}
         onInteractOutside={(e) => e.preventDefault()}
-        aria-label={picking ? 'Picking a trip' : 'New trip'}
-        className={cn('gap-3 p-3', picking ? 'w-auto' : 'w-80 max-w-[calc(100vw-1.5rem)]')}
+        aria-label={p.trip ? p.trip.name : picking ? 'Picking a trip' : editing ? 'Change trip' : 'New trip'}
+        className={cn('gap-3 p-3', p.trip ? 'w-72' : picking ? 'w-auto' : 'w-80 max-w-[calc(100vw-1.5rem)]')}
       >
-        {picking ? (
+        {p.trip ? (
+          <TripView {...p} trip={p.trip} />
+        ) : picking ? (
           <div className="flex items-center gap-3 text-sm">
             <span className="grid leading-tight">
               <span className="font-medium">{p.rangeText}</span>
-              <span className="text-xs text-muted-foreground">Now click the last day</span>
+              <span className="text-xs text-muted-foreground">{editing ? `Now click the last day of “${p.draft.name || 'the trip'}”` : 'Now click the last day'}</span>
             </span>
             <Button type="button" variant="ghost" size="icon-xs" aria-label="Cancel" onClick={p.onClear}>
               <XIcon />
@@ -179,9 +236,10 @@ function kindOf(c: DayCell | null): string {
 }
 
 /**
- * Phones: a sheet from the bottom that starts small, the day and one button, and grows into the form when the button
- * is tapped. It is not modal, so another day tapped behind it simply moves it to that day; once the form is up a dim
- * layer covers the calendar and a tap on it cancels, as a modal sheet would.
+ * Phones: a sheet from the bottom that starts small, the day and one button (or the trip tapped, with Change and
+ * Remove), and grows into the form when the button is tapped. It is not modal, so another day tapped behind it simply
+ * moves it to that day; once the form is up a dim layer covers the calendar and a tap on it cancels, as a modal sheet
+ * would.
  */
 function TripSheet(p: FormProps & { open: boolean }) {
   const [expanded, setExpanded] = useState(false);
@@ -190,6 +248,7 @@ function TripSheet(p: FormProps & { open: boolean }) {
     setExpanded(false);
   }, [p.anchorKey]);
   const drag = useDragDown(p.onClear);
+  const editing = !!p.draft.id;
   const worth = worthOf(p.tapped, p.yearInView);
   const block = p.tapped?.best;
   const onBlock = !!block && p.draft.from === block.start && p.draft.to === block.end;
@@ -198,7 +257,20 @@ function TripSheet(p: FormProps & { open: boolean }) {
     flushSync(() => setExpanded(true));
     p.inputRef.current?.focus();
   };
+  // Changing a trip is mostly about its days, so the keyboard stays down until the name is tapped.
+  const change = () => {
+    setExpanded(true);
+    p.onEdit();
+  };
   const dim = p.open && expanded;
+  const title = p.trip ? p.trip.name : expanded ? (editing ? 'Change trip' : 'New trip') : p.rangeText;
+  const description = p.trip
+    ? p.rangeText
+    : expanded
+      ? editing
+        ? 'Pick other days or a new name, then save.'
+        : worth || 'Pick the last day, give it a name and add it.'
+      : kindOf(p.tapped);
   return (
     <>
       {dim &&
@@ -229,8 +301,11 @@ function TripSheet(p: FormProps & { open: boolean }) {
             <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-muted-foreground/30" aria-hidden="true" />
             <SheetHeader className="flex-row items-start gap-3 px-4 pt-3 pb-1">
               <div className="min-w-0 flex-1 leading-tight">
-                <SheetTitle className="text-base">{expanded ? 'New trip' : p.rangeText}</SheetTitle>
-                <SheetDescription className="mt-0.5 text-xs">{expanded ? worth || 'Pick the last day, give it a name and add it.' : kindOf(p.tapped)}</SheetDescription>
+                <SheetTitle className="flex items-center gap-2 text-base">
+                  {p.trip && <Dot color={p.trip.color} />}
+                  <span className="truncate">{title}</span>
+                </SheetTitle>
+                <SheetDescription className="mt-0.5 text-xs">{description}</SheetDescription>
               </div>
               <Button type="button" variant="secondary" size="icon-sm" className="-mt-0.5 -mr-1 rounded-full" aria-label="Close" onClick={p.onClear}>
                 <XIcon />
@@ -238,7 +313,19 @@ function TripSheet(p: FormProps & { open: boolean }) {
             </SheetHeader>
           </div>
           <div className="flex flex-col gap-3 px-4 pt-2">
-            {!expanded ? (
+            {p.trip ? (
+              <>
+                <p className="text-sm text-muted-foreground">{p.summary}</p>
+                <Button type="button" size="lg" onClick={change}>
+                  <PencilIcon />
+                  Change
+                </Button>
+                <Button type="button" variant="destructive" size="lg" onClick={p.onRemove}>
+                  <Trash2Icon />
+                  Remove
+                </Button>
+              </>
+            ) : !expanded ? (
               <>
                 {worth && <p className="text-sm text-muted-foreground">{worth}</p>}
                 <Button type="button" size="lg" onClick={expand}>
@@ -248,7 +335,7 @@ function TripSheet(p: FormProps & { open: boolean }) {
               </>
             ) : (
               <>
-                {worth && block && !onBlock && (
+                {!editing && worth && block && !onBlock && (
                   <Button type="button" variant="secondary" size="lg" onClick={() => p.onRangeChange(block.start, block.end)}>
                     <SparklesIcon />
                     Use this break · {block.off} days off for {block.leave === 1 ? '1 day' : `${block.leave} days`}

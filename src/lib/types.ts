@@ -25,7 +25,10 @@ export interface Stored {
   settings: Settings;
 }
 
+/** The trip being made or changed in the form. */
 export interface Draft {
+  /** The id of the trip being changed, or '' for a new one. */
+  id: string;
   name: string;
   from: string;
   to: string;
