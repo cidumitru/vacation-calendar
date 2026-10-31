@@ -1,6 +1,7 @@
 import { CalendarCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { HeatLegend } from '@/components/heat-scale';
+import { HEAT_STYLE, VariantLegend } from '@/components/heat-variants';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Separator } from '@/components/ui/separator';
@@ -47,7 +48,7 @@ export function AppHeader(p: Props) {
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         <div className="mr-2 hidden items-center gap-4 text-xs text-muted-foreground lg:flex" aria-hidden="true">
           {heat ? (
-            <HeatLegend />
+            HEAT_STYLE === 'current' ? <HeatLegend /> : <VariantLegend style={HEAT_STYLE} />
           ) : (
             <>
               <span className="flex items-center gap-1.5">

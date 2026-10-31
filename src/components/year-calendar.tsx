@@ -1,6 +1,7 @@
 import { LightbulbIcon } from 'lucide-react';
 import { memo, type CSSProperties, type RefObject, type UIEvent } from 'react';
 import { HEAT_CLASS, HEAT_FREE_CLASS, heatLevel } from '@/components/heat-scale';
+import { HEAT_STYLE, VariantDay } from '@/components/heat-variants';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -91,8 +92,10 @@ function Month({ model, index, weekdays, view, onTapDay }: MonthProps) {
         {model.cells.map((c, i) => {
           if (!c) return <span key={`b${i}`} className="h-8" aria-hidden="true" />;
           if (!heat) return <Day key={c.key} cell={c} onTapDay={onTapDay} />;
-          // Heat bands join across the row like the calendar bands; a day no heat reaches keeps its own band's joins.
           const col = i % 7;
+          // PROTOTYPE: the alternative drawings, picked with ?heat= in the URL.
+          if (HEAT_STYLE !== 'current') return <VariantDay key={c.key} style={HEAT_STYLE} cell={c} prev={model.cells[i - 1]} next={model.cells[i + 1]} col={col} onTapDay={onTapDay} />;
+          // Heat bands join across the row like the calendar bands; a day no heat reaches keeps its own band's joins.
           const band = heated(c);
           const joinLeft = band ? col > 0 && heated(model.cells[i - 1]) : !!JOINS[c.kind] && c.joinLeft;
           const joinRight = band ? col < 6 && heated(model.cells[i + 1]) : !!JOINS[c.kind] && c.joinRight;
