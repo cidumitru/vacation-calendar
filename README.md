@@ -29,7 +29,7 @@ Layout:
 
 - `src/lib` holds the pure logic (`dates.ts`, `holidayEngine.ts`, `holidayStore.ts`, `holidays.ts`, `calendar.ts`, `insights.ts`, `storage.ts`, `palette.ts`). `calendar.ts` builds a semantic model of every day (trip, draft, holiday, weekend; band joins; first/last day; the day's value for the heat map) and leaves colours to the components. `insights.ts` reads the year's figures and the suggested breaks off that model.
 - `src/components/ui` is the shadcn/ui registry output, as `npx shadcn add` installs it; `components.json` is configured so more components can be added the same way. `src/components` holds the app's own pieces: `app-sidebar`, `app-header`, `year-calendar`, `heat-scale`, `insights-dialog` (lazy-loaded, with its content in `insights-map` and the shared `insights-bits`), `date-range-picker`, `settings-popover`, `theme-toggle`, `theme-provider`.
-- `src/hooks/use-year-scroller.ts` runs the endless year list (anchored prepends, year- and month-in-view sync, jumps to a year or a month).
+- `src/hooks/use-year-scroller.ts` runs the endless year list (anchored prepends, the month at the top held in place when the width changes and the months reflow, year- and month-in-view sync, jumps to a year or a month).
 - `src/index.css` imports Tailwind and `shadcn/tailwind.css` and defines the design tokens as CSS custom properties, plus three small utilities that colour trip days from a `--trip` custom property and the `--heat-1`…`--heat-4` ramp of the heat map with a darker `--heat-N-free` shade per step for the free days inside a break (one orange hue; dark mode has its own steps).
 
 ## Heat map

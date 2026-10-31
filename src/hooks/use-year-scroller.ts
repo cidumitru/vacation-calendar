@@ -53,6 +53,10 @@ export function useYearScroller(start: number, min: number, max: number, startMo
   const anchorRef = useRef<{ h: number; t: number } | null>(null);
   const jumpRef = useRef<{ y: number; month: number | null; smooth: boolean } | null>(null);
   const initTopRef = useRef<number | null>(null);
+  // What sits at the top of the view, a month or a year's heading, and how far into it, at the scroller's width then;
+  // kept as the view scrolls.
+  const topRef = useRef<{ y: number; month: number | null; dy: number; width: number } | null>(null);
+  const pinnedRef = useRef<number | null>(null);
 
   const setJumping = (ms: number) => {
     jumpingRef.current = true;
@@ -89,6 +93,28 @@ export function useYearScroller(start: number, min: number, max: number, startMo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // A change of width (the sidebar or the settings panel opening or closing, a window resize) reflows the months into
+  // more or fewer columns, so every year above the view changes height and the view would drift into another year;
+  // put back what was at the top instead.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      const at = topRef.current;
+      if (!at || el.clientWidth === at.width) return;
+      const t = target(el, at.y, at.month);
+      if (!t) {
+        topRef.current = null;
+        return;
+      }
+      el.scrollTop = topOf(el, t) + at.dy;
+      topRef.current = { ...at, width: el.clientWidth };
+      pinnedRef.current = el.scrollTop;
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   // After every render: keep the view still across a prepend, then carry out a pending jump.
   useLayoutEffect(() => {
     const el = ref.current;
@@ -112,6 +138,27 @@ export function useYearScroller(start: number, min: number, max: number, startMo
       jumpRef.current = null;
     }
   });
+
+  /** Notes the month (or the year's heading, above its first row) at the top of the view, the first of its row. */
+  const rememberTop = (el: HTMLDivElement) => {
+    const top = el.getBoundingClientRect().top;
+    const secs = el.querySelectorAll<HTMLElement>('[data-year]');
+    let sec = secs[0];
+    secs.forEach((s) => {
+      if (s.getBoundingClientRect().top <= top) sec = s;
+    });
+    if (!sec) return;
+    let month: number | null = null;
+    let from = sec.getBoundingClientRect().top;
+    sec.querySelectorAll<HTMLElement>('[data-month]').forEach((m) => {
+      const t = m.getBoundingClientRect().top;
+      if (t <= top && t > from) {
+        from = t;
+        month = Number(m.dataset.month);
+      }
+    });
+    topRef.current = { y: Number(sec.dataset.year), month, dy: top - from, width: el.clientWidth };
+  };
 
   const syncActive = (el: HTMLDivElement) => {
     if (jumpingRef.current) return;
@@ -145,6 +192,13 @@ export function useYearScroller(start: number, min: number, max: number, startMo
 
   const onScroll = (e: UIEvent<HTMLDivElement>) => {
     const el = e.currentTarget;
+    // A change of width can leave the old offset past the new end; the browser clamps it before the observer puts the
+    // top back, and that scroll says nothing about what should stay in view. The scroll that putting the top back
+    // causes would only round it again.
+    const at = topRef.current;
+    if (at && at.width !== el.clientWidth && el.scrollTop + el.clientHeight >= el.scrollHeight - 1) return;
+    if (pinnedRef.current === el.scrollTop) pinnedRef.current = null;
+    else rememberTop(el);
     syncActive(el);
     if (busyRef.current || jumpingRef.current) return;
     if (el.scrollTop < EDGE && yFrom > min) {
