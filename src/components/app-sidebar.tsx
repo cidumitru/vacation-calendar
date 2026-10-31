@@ -1,11 +1,6 @@
-import { CalendarDaysIcon, PalmtreeIcon, PlusIcon, XIcon } from 'lucide-react';
-import type { FormEvent } from 'react';
-import { DateRangePicker } from '@/components/date-range-picker';
-import { Button } from '@/components/ui/button';
+import { CalendarDaysIcon, PalmtreeIcon, XIcon } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '@/components/ui/empty';
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
-import { Input } from '@/components/ui/input';
 import {
   Sidebar,
   SidebarContent,
@@ -20,8 +15,6 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar';
-import type { Draft, WeekStart } from '@/lib/types';
-
 export interface TripRow {
   id: string;
   name: string;
@@ -36,25 +29,12 @@ export interface Segment {
   color: string;
 }
 
-export type HintKind = 'default' | 'draft' | 'error';
-
 interface Props {
   year: number;
-  minYear: number;
-  maxYear: number;
   allowance: number;
   used: number;
   holidaysOn: boolean;
-  weekStart: WeekStart;
   segments: Segment[];
-  draft: Draft;
-  dateText: string;
-  onNameChange: (name: string) => void;
-  onRangeChange: (from: string, to: string) => void;
-  onClear: () => void;
-  onAdd: (e: FormEvent<HTMLFormElement>) => void;
-  hint: string;
-  hintKind: HintKind;
   trips: TripRow[];
   onRemove: (id: string) => void;
   onJump: (from: string) => void;
@@ -63,7 +43,6 @@ interface Props {
 export function AppSidebar(p: Props) {
   const { setOpenMobile } = useSidebar();
   const left = Math.abs(p.allowance - p.used);
-  const hasDraft = !!(p.draft.name || p.draft.from || p.draft.to);
 
   return (
     <Sidebar variant="inset" collapsible="offcanvas">
@@ -108,58 +87,6 @@ export function AppSidebar(p: Props) {
         </SidebarGroup>
 
         <SidebarGroup>
-          <SidebarGroupLabel>New trip</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <form onSubmit={p.onAdd}>
-              <FieldGroup className="gap-4">
-                <Field>
-                  <FieldLabel htmlFor="trip-name">Name</FieldLabel>
-                  <Input
-                    id="trip-name"
-                    placeholder="Summer"
-                    autoComplete="off"
-                    value={p.draft.name}
-                    onChange={(e) => p.onNameChange(e.target.value)}
-                  />
-                </Field>
-                <Field data-invalid={p.hintKind === 'error' || undefined}>
-                  <FieldLabel htmlFor="trip-dates">Dates</FieldLabel>
-                  <DateRangePicker
-                    id="trip-dates"
-                    from={p.draft.from}
-                    to={p.draft.to}
-                    text={p.dateText}
-                    yearInView={p.year}
-                    minYear={p.minYear}
-                    maxYear={p.maxYear}
-                    weekStart={p.weekStart}
-                    onChange={p.onRangeChange}
-                  />
-                  {p.hintKind === 'error' ? (
-                    <FieldError aria-live="polite">{p.hint}</FieldError>
-                  ) : (
-                    <FieldDescription aria-live="polite" className={p.hintKind === 'draft' ? 'text-foreground' : undefined}>
-                      {p.hint}
-                    </FieldDescription>
-                  )}
-                </Field>
-                <div className="flex gap-2">
-                  <Button type="submit" className="flex-1" disabled={!p.draft.from}>
-                    <PlusIcon />
-                    Add trip
-                  </Button>
-                  {hasDraft && (
-                    <Button type="button" variant="ghost" onClick={p.onClear}>
-                      Clear
-                    </Button>
-                  )}
-                </div>
-              </FieldGroup>
-            </form>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarGroup>
           <SidebarGroupLabel>Trips in {p.year}</SidebarGroupLabel>
           <SidebarGroupContent>
             {p.trips.length === 0 ? (
@@ -169,7 +96,7 @@ export function AppSidebar(p: Props) {
                     <CalendarDaysIcon />
                   </EmptyMedia>
                   <EmptyTitle>No trips in {p.year}</EmptyTitle>
-                  <EmptyDescription>Click a first and a last day in the calendar, or pick dates above.</EmptyDescription>
+                  <EmptyDescription>Click a first and a last day in the calendar to plan one.</EmptyDescription>
                 </EmptyHeader>
               </Empty>
             ) : (

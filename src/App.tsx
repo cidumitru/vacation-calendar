@@ -1,11 +1,12 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
-import { AppSidebar, type HintKind, type Segment, type TripRow } from '@/components/app-sidebar';
+import { AppSidebar, type Segment, type TripRow } from '@/components/app-sidebar';
 import type { NewBreak } from '@/components/insights-dialog';
 import { SettingsButton, SettingsPanel } from '@/components/settings-panel';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { TripPopover } from '@/components/trip-popover';
 import { YearCalendar } from '@/components/year-calendar';
 import { isMobileViewport, useIsMobile } from '@/hooks/use-mobile';
 import { useYearScroller } from '@/hooks/use-year-scroller';
@@ -35,6 +36,8 @@ export function App() {
   const [trips, setTrips] = useState<Trip[]>(initial.trips);
   const [settings, setSettings] = useState<Settings>(initial.settings);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  // The day the trip popover sits on: the day clicked last, or the end of a range picked in its date picker.
+  const [anchorKey, setAnchorKey] = useState('');
   const [err, setErr] = useState('');
   // On phones the months stack in one column, so "today" is the current month there; on wider screens it is the year.
   const isMobile = useIsMobile();
@@ -44,13 +47,15 @@ export function App() {
   const atToday = year === THIS_YEAR && (!isMobile || month === THIS_MONTH);
   const goToday = () => jumpTo(THIS_YEAR, true, isMobile ? THIS_MONTH : undefined);
 
-  // ---- The insights dialog, opened from the bulb beside the year; mounted, and so loaded, on the first open.
+  // ---- The insights dialog, opened for a year from the button in its heading; mounted, and so loaded, on the first open.
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [insightsMounted, setInsightsMounted] = useState(false);
-  const openInsights = () => {
+  const [insightsYear, setInsightsYear] = useState(THIS_YEAR);
+  const openInsights = useCallback((y: number) => {
+    setInsightsYear(y);
     setInsightsMounted(true);
     setInsightsOpen(true);
-  };
+  }, []);
 
   // ---- The settings panel: a column beside the calendar on wider screens, a sheet on phones, each with its own open state
   // like the sidebar's open and openMobile. Both start closed and are not remembered.
@@ -111,18 +116,27 @@ export function App() {
   // ---- Draft and trips.
   const setName = (name: string) => setDraft((d) => ({ ...d, name }));
 
+  /** Dates picked in the popover's own picker: the popover moves to the last day, and the calendar goes there if that year is not on screen. */
   const setRange = (from: string, to: string) => {
     setDraft((d) => ({ ...d, from, to }));
     setErr('');
+    const k = to || from;
+    setAnchorKey(k);
+    if (k) {
+      const y = yearOf(k);
+      if (y < yFrom || y > yTo) jumpTo(y, false, Number(k.slice(5, 7)) - 1);
+    }
   };
 
   const clearDraft = () => {
     setDraft(EMPTY_DRAFT);
+    setAnchorKey('');
     setErr('');
   };
 
   const tapDay = useCallback((key: string) => {
     setErr('');
+    setAnchorKey(key);
     setDraft((d) => {
       if (!d.from || d.to) return { ...d, from: key, to: '' };
       if (key < d.from) return { ...d, from: key, to: d.from };
@@ -154,6 +168,7 @@ export function App() {
     };
     setTrips([...trips, trip]);
     setDraft(EMPTY_DRAFT);
+    setAnchorKey('');
     setErr('');
     const ty = yearOf(a);
     if (ty !== year) jumpTo(ty, true);
@@ -213,23 +228,20 @@ export function App() {
   // ---- Settings.
   const patchSettings = (patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch }));
 
-  // ---- Derived view values for the year in view.
-  let hint = 'Or click a first and a last day in the calendar.';
-  let hintKind: HintKind = 'default';
-  if (err) {
-    hint = err;
-    hintKind = 'error';
-  } else if (pa) {
+  // ---- The draft, as the popover words it: the dates, and what they cost, naming the public holidays inside.
+  const rangeText = pa ? `${fmt(pa, year)}${pb !== pa ? ` – ${fmt(pb, year)}` : ''}` : '';
+  let summary = '';
+  if (pa) {
     const c = count(pa, pb, settings, lookup);
-    // A pick that lands on a public holiday says which one: "Fri 1 May (Labour Day)".
-    const day = (k: string) => {
-      const h = settings.holidays ? lookup(yearOf(k))[k] : '';
-      return fmt(k, year) + (h ? ` (${h})` : '');
-    };
-    hint = `${day(pa)}${pb !== pa ? ` → ${day(pb)}` : ''} · ${c.all} ${c.all === 1 ? 'day' : 'days'}, ${c.off} off work`;
-    hintKind = 'draft';
+    const names: string[] = [];
+    if (settings.holidays) {
+      eachDay(pa, pb, (k) => {
+        for (const n of (lookup(yearOf(k))[k] || '').split(' · ')) if (n && !names.includes(n)) names.push(n);
+      });
+    }
+    summary = `${plural(c.all, 'day')} · ${c.off} off work`;
+    if (names.length) summary += ` · includes ${names.length <= 2 ? names.join(' and ') : `${names[0]} and ${names.length - 1} more`}`;
   }
-  const dateText = pa ? `${fmt(pa, year)}${pb !== pa ? ` – ${fmt(pb, year)}` : ''}` : 'Pick dates';
 
   const yA = `${year}-01-01`;
   const yB = `${year}-12-31`;
@@ -257,21 +269,10 @@ export function App() {
       <SidebarProvider style={SIDEBAR_STYLE}>
         <AppSidebar
           year={year}
-          minYear={MIN_YEAR}
-          maxYear={MAX_YEAR}
           allowance={settings.allowance}
           used={cur.used}
           holidaysOn={settings.holidays}
-          weekStart={settings.weekStart}
           segments={segments}
-          draft={draft}
-          dateText={dateText}
-          onNameChange={setName}
-          onRangeChange={setRange}
-          onClear={clearDraft}
-          onAdd={addTrip}
-          hint={hint}
-          hintKind={hintKind}
           trips={rows}
           onRemove={removeTrip}
           onJump={(from) => jumpTo(yearOf(from), true)}
@@ -286,11 +287,28 @@ export function App() {
             onPrev={() => jumpTo(year - 1, true)}
             onNext={() => jumpTo(year + 1, true)}
             onToday={goToday}
-            onOpenInsights={openInsights}
           >
             <SettingsButton ref={settingsButtonRef} open={isMobile ? settingsMobile : settingsOpen} onClick={toggleSettings} />
           </AppHeader>
-          <YearCalendar years={years} view={settings.view} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} />
+          <YearCalendar years={years} view={settings.view} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} onOpenInsights={openInsights} />
+          <TripPopover
+            draft={draft}
+            anchorKey={anchorKey}
+            scrollerRef={scroller.ref}
+            mountedYears={`${yFrom}-${yTo}`}
+            rangeText={rangeText}
+            summary={summary}
+            error={err}
+            yearInView={year}
+            minYear={MIN_YEAR}
+            maxYear={MAX_YEAR}
+            weekStart={settings.weekStart}
+            isMobile={isMobile}
+            onNameChange={setName}
+            onRangeChange={setRange}
+            onClear={clearDraft}
+            onAdd={addTrip}
+          />
         </SidebarInset>
         <SettingsPanel
           isMobile={isMobile}
@@ -313,7 +331,7 @@ export function App() {
             <InsightsDialog
               open={insightsOpen}
               onOpenChange={setInsightsOpen}
-              model={cur}
+              model={yearModel(insightsYear)}
               ctx={ctx}
               allowance={settings.allowance}
               holidaysOn={settings.holidays}
@@ -321,7 +339,7 @@ export function App() {
               today={TODAY_KEY}
               weekStart={settings.weekStart}
               onAdd={addBreaks}
-              onJumpMonth={(m) => jumpTo(year, true, m)}
+              onJumpMonth={(m) => jumpTo(insightsYear, true, m)}
             />
           </Suspense>
         )}

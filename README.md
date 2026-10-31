@@ -7,8 +7,9 @@ A yearly vacation planner: one client-only web page with no backend, no accounts
 - Days-off counting per calendar year: weekends and holidays are free
 - A heat map view (the flame button in the header) that shades every working day by its value: the most days off per day of leave that a block of up to a working week through it can buy around a public holiday. A regular Monday or Friday with nothing else around stays bare, bridge days next to public holidays glow, a day that joins two hits into one long break gets heat too, and the weekends and holidays inside a break take its heat so the whole length of a vacation shows as one band; hover or focus a shaded day for the figures and the block
 - Today returns to the current year, or on phones, where months stack in one column, to the current month; the app opens there too
-- Sidebar with a summary, a New Trip form (a date-range picker, or click two days in the calendar) and the trips of the year in view; removing a trip can be undone from the toast
-- Insights dialog (the bulb beside the year) for the year in view: a map of the year, working days, weekends, public holidays on weekdays and the ones lost to a weekend, bridge days, what the leave still left can buy, and the breaks worth taking grouped around each holiday; a click adds a break to the calendar as a trip, undoable from the toast. Its code loads the first time it opens
+- Sidebar with a summary and the trips of the year in view; removing a trip can be undone from the toast
+- A new trip starts in the calendar: click a first day, then a last day (the same day twice for one day), and a popover on that day shows the dates with a date-range picker to adjust them, the days off work it costs and the public holidays it includes, and takes a name; Enter adds, Esc cancels, and clicking another day starts over
+- Insights dialog (the Insights button at the right end of each year's heading) for that year: a map of the year, working days, weekends, public holidays on weekdays and the ones lost to a weekend, bridge days, what the leave still left can buy, and the breaks worth taking grouped around each holiday; a click adds a break to the calendar as a trip, undoable from the toast. Its code loads the first time it opens
 - Settings panel (the Settings button), beside the calendar on the right or as a sheet on phones: holidays on/off, searchable country list, region, week start, days off per year, and the appearance (light, dark or system)
 - On phones the sidebar opens as a sheet
 
@@ -28,7 +29,7 @@ Stack: Vite, TypeScript, React 19, Tailwind CSS v4 and [shadcn/ui](https://ui.sh
 Layout:
 
 - `src/lib` holds the pure logic (`dates.ts`, `holidayEngine.ts`, `holidayStore.ts`, `holidays.ts`, `calendar.ts`, `insights.ts`, `storage.ts`, `palette.ts`). `calendar.ts` builds a semantic model of every day (trip, draft, holiday, weekend; band joins; first/last day; the day's value for the heat map) and leaves colours to the components. `insights.ts` reads the year's figures and the suggested breaks off that model.
-- `src/components/ui` is the shadcn/ui registry output, as `npx shadcn add` installs it; `components.json` is configured so more components can be added the same way. `src/components` holds the app's own pieces: `app-sidebar`, `app-header`, `year-calendar`, `heat-scale`, `insights-dialog` (lazy-loaded, with its content in `insights-map` and the shared `insights-bits`), `date-range-picker`, `settings-panel`, `theme-toggle`, `theme-provider`.
+- `src/components/ui` is the shadcn/ui registry output, as `npx shadcn add` installs it; `components.json` is configured so more components can be added the same way. `src/components` holds the app's own pieces: `app-sidebar`, `app-header`, `year-calendar`, `trip-popover`, `heat-scale`, `insights-dialog` (lazy-loaded, with its content in `insights-map` and the shared `insights-bits`), `date-range-picker`, `settings-panel`, `theme-toggle`, `theme-provider`.
 - `src/hooks/use-year-scroller.ts` runs the endless year list (anchored prepends, the month at the top held in place when the width changes and the months reflow, year- and month-in-view sync, jumps to a year or a month).
 - `src/index.css` imports Tailwind and `shadcn/tailwind.css` and defines the design tokens as CSS custom properties, plus three small utilities that colour trip days from a `--trip` custom property and the `--heat-1`…`--heat-4` ramp of the heat map with a darker `--heat-N-free` shade per step for the free days inside a break (one orange hue; dark mode has its own steps).
 
@@ -38,7 +39,7 @@ The heat map keeps the same year grid and shades each working day by its value, 
 
 ## Insights
 
-The dialog behind the bulb beside the year describes the year in view, `buildInsights` in `insights.ts`, from the same year model the calendar draws:
+The dialog behind the Insights button in a year's heading describes that year, `buildInsights` in `insights.ts`, from the same year model the calendar draws:
 
 - The figures: days, weekend days, working days (weekdays that are not public holidays), public holidays on weekdays and the ones that fall on a Saturday or Sunday and so add nothing, holidays per weekday, and bridge days (working days where one day of leave buys a break of four days or more).
 - The suggested breaks: every distinct best block (see the heat map) worth two and a half days off per day of leave or more, gathered into clusters by overlap, so that the one, two, three, four and five days of leave around New Year are one entry with five lengths rather than five entries. A break is named after its holidays ("Good Friday – Easter Monday"); a break a trip already covers is marked as planned and cannot be added again. Adding one makes a trip over the whole break, free days included, so it shows as one band.
