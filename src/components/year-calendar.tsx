@@ -1,5 +1,7 @@
+import { LightbulbIcon } from 'lucide-react';
 import { memo, type CSSProperties, type RefObject, type UIEvent } from 'react';
 import { HEAT_CLASS, HEAT_FREE_CLASS, heatLevel } from '@/components/heat-scale';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { DayCell, DayKind, MonthModel, YearModel } from '@/lib/calendar';
@@ -13,9 +15,11 @@ interface Props {
   scrollerRef: RefObject<HTMLDivElement | null>;
   onScroll: (e: UIEvent<HTMLDivElement>) => void;
   onTapDay: (key: string) => void;
+  /** Opens the insights dialog for a year, from the button in its heading. */
+  onOpenInsights: (year: number) => void;
 }
 
-export function YearCalendar({ years, view, scrollerRef, onScroll, onTapDay }: Props) {
+export function YearCalendar({ years, view, scrollerRef, onScroll, onTapDay, onOpenInsights }: Props) {
   return (
     <div
       ref={scrollerRef}
@@ -23,7 +27,7 @@ export function YearCalendar({ years, view, scrollerRef, onScroll, onTapDay }: P
       className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [overflow-anchor:none] sm:px-6"
     >
       {years.map((y) => (
-        <YearSection key={y.y} model={y} view={view} onTapDay={onTapDay} />
+        <YearSection key={y.y} model={y} view={view} onTapDay={onTapDay} onOpenInsights={onOpenInsights} />
       ))}
     </div>
   );
@@ -33,15 +37,20 @@ interface SectionProps {
   model: YearModel;
   view: CalendarView;
   onTapDay: (key: string) => void;
+  onOpenInsights: (year: number) => void;
 }
 
 // Memoised on the cached year model: typing a trip name never re-renders a year.
-const YearSection = memo(function YearSection({ model, view, onTapDay }: SectionProps) {
+const YearSection = memo(function YearSection({ model, view, onTapDay, onOpenInsights }: SectionProps) {
   return (
     <section data-year={model.y} aria-label={model.label} className="pt-5 pb-10">
       <div className="mb-5 flex items-center gap-3">
         <h2 className="text-sm font-medium text-muted-foreground tabular-nums">{model.y}</h2>
         <Separator className="flex-1" />
+        <Button variant="outline" size="sm" className="text-muted-foreground hover:text-foreground" onClick={() => onOpenInsights(model.y)} aria-label={`Insights for ${model.y}`}>
+          <LightbulbIcon />
+          Insights
+        </Button>
       </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,100%),1fr))] gap-x-8 gap-y-8">
         {model.months.map((m, i) => (
@@ -137,6 +146,7 @@ function Day({ cell, onTapDay }: DayProps) {
   const button = (
     <button
       type="button"
+      data-day={cell.key}
       aria-label={cell.aria}
       onClick={() => onTapDay(cell.key)}
       style={cell.color ? ({ '--trip': cell.color } as CSSProperties) : undefined}
@@ -236,6 +246,7 @@ function HeatDay({ cell, joinLeft, joinRight, onTapDay }: HeatDayProps) {
   const button = (
     <button
       type="button"
+      data-day={cell.key}
       aria-label={gain ? `${cell.aria}, ${gain}` : cell.aria}
       onClick={() => onTapDay(cell.key)}
       style={cell.color ? ({ '--trip': cell.color } as CSSProperties) : undefined}

@@ -1,11 +1,16 @@
-import { CheckIcon, ChevronsUpDownIcon, MinusIcon, PlusIcon, Settings2Icon } from 'lucide-react';
-import { useState } from 'react';
+// The settings on the right: a column beside the calendar on wider screens, a sheet on phones, toggled from the Settings
+// button in the header. Its content is the holidays, the country and region, the week start, the yearly allowance and the
+// appearance.
+
+import { CheckIcon, ChevronsUpDownIcon, MinusIcon, PlusIcon, Settings2Icon, XIcon } from 'lucide-react';
+import { useState, type Ref, type RefObject } from 'react';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from '@/components/ui/field';
-import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -15,8 +20,31 @@ import type { Settings, WeekStart } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 const NATIONWIDE = 'nationwide'; // Radix Select keeps '' for its placeholder
+const SUBTITLE = 'Public holidays, week start, your yearly allowance and the appearance.';
+
+export const SETTINGS_ID = 'settings-panel';
+const TITLE_ID = 'settings-panel-title';
+
+/** The header button that opens and closes the panel; it stays in place at the header's right end. */
+export function SettingsButton({ ref, open, onClick }: { ref?: Ref<HTMLButtonElement>; open: boolean; onClick: () => void }) {
+  return (
+    <Button ref={ref} variant="outline" aria-expanded={open} aria-controls={SETTINGS_ID} onClick={onClick}>
+      <Settings2Icon />
+      <span className="sr-only sm:not-sr-only">Settings</span>
+    </Button>
+  );
+}
 
 interface Props {
+  isMobile: boolean;
+  /** Open beside the calendar (wider screens). */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Open as a sheet (phones). */
+  openMobile: boolean;
+  onOpenMobileChange: (open: boolean) => void;
+  /** The Settings button in the header, where focus goes back when the panel closes. */
+  triggerRef: RefObject<HTMLButtonElement | null>;
   settings: Settings;
   year: number;
   /** Every country with data, or undefined while the rules load. */
@@ -29,7 +57,22 @@ interface Props {
   onChange: (patch: Partial<Settings>) => void;
 }
 
-export function SettingsPopover({ settings, year, countries, regions, holidayCount, status, onRetry, onChange }: Props) {
+export function SettingsPanel({
+  isMobile,
+  open,
+  onOpenChange,
+  openMobile,
+  onOpenMobileChange,
+  triggerRef,
+  settings,
+  year,
+  countries,
+  regions,
+  holidayCount,
+  status,
+  onRetry,
+  onChange,
+}: Props) {
   const known = !countries || countries.some((c) => c.code === settings.country);
   const countryOptions: Country[] = countries ? [...countries] : [];
   if (!known) countryOptions.unshift({ code: settings.country, name: settings.country });
@@ -55,20 +98,48 @@ export function SettingsPopover({ settings, year, countries, regions, holidayCou
   }
   const canRetry = settings.holidays && !!status.error && !status.loading;
 
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button variant="outline">
-          <Settings2Icon />
-          <span className="sr-only sm:not-sr-only">Settings</span>
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[22rem] max-w-[calc(100vw-2rem)]">
-        <PopoverHeader>
-          <PopoverTitle>Settings</PopoverTitle>
-          <PopoverDescription>Public holidays, week start, your yearly allowance and the appearance.</PopoverDescription>
-        </PopoverHeader>
+  const close = () => {
+    if (isMobile) {
+      // The sheet hands focus back to the Settings button itself as it closes (onCloseAutoFocus below).
+      onOpenMobileChange(false);
+      return;
+    }
+    onOpenChange(false);
+    // The closed column is inert, so focus would drop to the page; it goes back to the Settings button instead.
+    triggerRef.current?.focus();
+  };
 
+  // In the sheet the title and subtitle are the dialog's own, so it is announced by name; the column's landmark points
+  // at the same heading. The subtitle keeps to one line and shows in full on hover.
+  const titleClass = 'truncate text-sm font-semibold';
+  const subtitleClass = 'truncate text-xs text-muted-foreground';
+  const body = (
+    <div className="flex h-full flex-col text-sidebar-foreground">
+      <div className="flex h-14 shrink-0 items-center gap-2 px-3">
+        <div className="grid min-w-0 flex-1 leading-tight">
+          {isMobile ? (
+            <>
+              <SheetTitle className={cn(titleClass, 'text-sidebar-foreground')}>Settings</SheetTitle>
+              <SheetDescription className={subtitleClass} title={SUBTITLE}>
+                {SUBTITLE}
+              </SheetDescription>
+            </>
+          ) : (
+            <>
+              <h2 id={TITLE_ID} className={titleClass}>
+                Settings
+              </h2>
+              <p className={subtitleClass} title={SUBTITLE}>
+                {SUBTITLE}
+              </p>
+            </>
+          )}
+        </div>
+        <Button variant="ghost" size="icon-sm" aria-label="Close settings" onClick={close}>
+          <XIcon />
+        </Button>
+      </div>
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-3 pb-4">
         <FieldGroup className="gap-5">
           <Field orientation="horizontal">
             <FieldContent>
@@ -182,8 +253,41 @@ export function SettingsPopover({ settings, year, countries, regions, holidayCou
           </a>{' '}
           (CC BY-SA 3.0), computed in this browser.
         </p>
-      </PopoverContent>
-    </Popover>
+      </div>
+    </div>
+  );
+
+  if (isMobile) {
+    return (
+      <Sheet open={openMobile} onOpenChange={onOpenMobileChange}>
+        <SheetContent
+          id={SETTINGS_ID}
+          side="right"
+          showCloseButton={false}
+          className="w-[20rem] max-w-[88vw] gap-0 bg-sidebar p-0 text-sidebar-foreground"
+          onCloseAutoFocus={(e) => {
+            // The sheet has no Radix trigger to return to, so focus would drop to the page.
+            e.preventDefault();
+            triggerRef.current?.focus();
+          }}
+        >
+          {body}
+        </SheetContent>
+      </Sheet>
+    );
+  }
+
+  // Closed, the column takes no room and is inert, so nothing in it can take focus.
+  return (
+    <aside
+      id={SETTINGS_ID}
+      aria-labelledby={TITLE_ID}
+      data-state={open ? 'open' : 'closed'}
+      inert={!open}
+      className={cn('hidden shrink-0 overflow-hidden transition-[width,margin] duration-200 ease-linear md:block', open ? 'mr-2 w-(--settings-width)' : 'mr-0 w-0')}
+    >
+      <div className="my-2 h-[calc(100svh-1rem)] w-(--settings-width)">{body}</div>
+    </aside>
   );
 }
 
