@@ -45,6 +45,8 @@
   --heat-2-foreground: oklch(0.145 0 0);
   --heat-3: oklch(0.5 0.16 40);
   --heat-3-foreground: oklch(1 0 0);
+  /* PROTOTYPE (country-compare): the other country's holidays, a teal apart from the red of yours and the blue of the draft. */
+  --other: oklch(0.55 0.11 205);
 }
 
 .dark {
@@ -86,6 +88,7 @@
   --heat-2-foreground: oklch(0.145 0 0);
   --heat-3: oklch(0.82 0.13 65);
   --heat-3-foreground: oklch(0.145 0 0);
+  --other: oklch(0.75 0.11 205);
 }
 
 @theme inline {
@@ -127,6 +130,7 @@
   --color-heat-2-foreground: var(--heat-2-foreground);
   --color-heat-3: var(--heat-3);
   --color-heat-3-foreground: var(--heat-3-foreground);
+  --color-other: var(--other);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -164,5 +168,29 @@
   color: color-mix(in oklab, var(--trip) 78%, black);
   @variant dark {
     color: color-mix(in oklab, var(--trip) 62%, white);
+  }
+}
+
+/* PROTOTYPE (country-compare): a holiday in the other country only, and a day both countries are off, drawn as the
+   two tints striped together. */
+@utility other-band {
+  background-color: color-mix(in oklab, var(--other) 16%, transparent);
+  @variant dark {
+    background-color: color-mix(in oklab, var(--other) 30%, transparent);
+  }
+}
+
+@utility shared-band {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--destructive) 14%, transparent) 0 4px,
+    color-mix(in oklab, var(--other) 22%, transparent) 4px 8px
+  );
+  @variant dark {
+    background: repeating-linear-gradient(
+      135deg,
+      color-mix(in oklab, var(--destructive) 26%, transparent) 0 4px,
+      color-mix(in oklab, var(--other) 36%, transparent) 4px 8px
+    );
   }
 }

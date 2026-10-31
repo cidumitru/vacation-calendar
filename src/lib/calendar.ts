@@ -1,5 +1,5 @@
 import { DAY, DAY_SHORT, MONTH_NAMES, eachDay, iso, isWeekend, isoMs, ms, yearOf } from './dates';
-import { EMPTY_LOOKUP, type HolidayLookup } from './holidays';
+import { EMPTY_LOOKUP, type HolidayLookup, type OtherCountry, type OtherHoliday } from './holidays';
 import type { Settings, Trip } from './types';
 
 /** 'YYYY-MM-DD' → the trip that owns that day. */
@@ -147,6 +147,8 @@ export interface DayCell {
   joinLeft: boolean;
   joinRight: boolean;
   holiday: string; // '' when none; shown in a tooltip and in the accessible name
+  /** PROTOTYPE: the other countries (Settings.others) off on this day, in their order; [] when none or with holidays off. */
+  others: OtherHoliday[];
   /** Days off per day of leave of the best block through this day (see bestBlock); 0 on a free day. Shades the heat map. */
   value: number;
   /** That block, for the tooltip; null on a free day. */
@@ -186,6 +188,8 @@ export interface BuildContext {
   dTo: string;
   /** The trip the draft is changing, or '': its band gives way to the draft's, though its days still count as planned. */
   editId: string;
+  /** PROTOTYPE: the other countries whose holidays the cells note (DayCell.others); they never change what a day costs. */
+  others: OtherCountry[];
 }
 
 export function buildContext(
@@ -195,12 +199,13 @@ export function buildContext(
   settings: Settings,
   lookup: HolidayLookup = EMPTY_LOOKUP,
   editId = '',
+  others: OtherCountry[] = [],
 ): BuildContext {
   const own = Array.isArray(trips) ? ownMap(trips) : trips;
   const [pa, pb] = draftRange(dFrom, dTo);
   const prev: Record<string, true> = {};
   if (pa) eachDay(pa, pb, (k) => { prev[k] = true; });
-  return { own, prev, settings, lookup, sunFirst: settings.weekStart === 'Sunday', pa, pb, dFrom, dTo, editId };
+  return { own, prev, settings, lookup, sunFirst: settings.weekStart === 'Sunday', pa, pb, dFrom, dTo, editId, others };
 }
 
 interface DayInfo {
@@ -225,6 +230,7 @@ const WEEKDAYS_SUN = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 export function buildYear(y: number, ctx: BuildContext): YearModel {
   const S = ctx.settings;
   const H = S.holidays ? ctx.lookup(y) : {};
+  const O = S.holidays ? ctx.others.map((o) => ({ ...o, map: o.lookup(y) })) : [];
   const offBy: Record<string, number> = {};
   let used = 0;
   // Free-day lookups are memoised: every working day's best block scans a few weeks either side.
@@ -305,6 +311,8 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
       }
 
       const best = blocks.get(c.key) ?? null;
+      const others: OtherHoliday[] = [];
+      for (const o of O) if (o.map[c.key]) others.push({ code: o.code, name: o.name, holiday: o.map[c.key] });
       cells.push({
         n: c.d,
         key: c.key,
@@ -315,10 +323,11 @@ export function buildYear(y: number, ctx: BuildContext): YearModel {
         joinLeft,
         joinRight,
         holiday: c.hol,
+        others,
         value: best ? best.off / best.leave : 0,
         best,
         heat: heat.get(c.key) ?? 0,
-        aria: `${DAY_SHORT[c.g]} ${c.d} ${name}${c.hol ? `, ${c.hol}` : ''}${c.t ? `, ${c.t.name}` : ''}`,
+        aria: `${DAY_SHORT[c.g]} ${c.d} ${name}${c.hol ? `, ${c.hol}` : ''}${others.map((o) => `, ${o.holiday} in ${o.name}`).join('')}${c.t ? `, ${c.t.name}` : ''}`,
       });
     });
 

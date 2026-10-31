@@ -1,11 +1,13 @@
 import { CalendarCheckIcon, ChevronLeftIcon, ChevronRightIcon, FlameIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { COMPARE_STYLE, CompareLegend } from '@/components/country-compare';
 import { HeatLegend } from '@/components/heat-scale';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup } from '@/components/ui/button-group';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Toggle } from '@/components/ui/toggle';
+import type { OtherCountry } from '@/lib/holidays';
 import type { CalendarView } from '@/lib/types';
 
 interface Props {
@@ -13,6 +15,8 @@ interface Props {
   /** Away from today: another year, or on phones another month. */
   showToday: boolean;
   holidaysOn: boolean;
+  /** PROTOTYPE: your country's name and the countries compared with it (see country-compare); null when none. */
+  compare: { mine: string; others: OtherCountry[] } | null;
   view: CalendarView;
   onViewChange: (view: CalendarView) => void;
   onPrev: () => void;
@@ -48,6 +52,8 @@ export function AppHeader(p: Props) {
         <div className="mr-2 hidden items-center gap-4 text-xs text-muted-foreground lg:flex" aria-hidden="true">
           {heat ? (
             <HeatLegend />
+          ) : p.compare && p.holidaysOn ? (
+            <CompareLegend style={COMPARE_STYLE} mine={p.compare.mine} others={p.compare.others} />
           ) : (
             <>
               <span className="flex items-center gap-1.5">

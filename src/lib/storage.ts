@@ -1,4 +1,4 @@
-import type { Settings, Stored, Trip } from './types';
+import type { CountryPick, Settings, Stored, Trip } from './types';
 
 export const STORE_KEY = 'vp-apple-v1';
 
@@ -16,6 +16,8 @@ export const SEED_TRIPS: Trip[] = [
 
 export const COUNTRY_RE = /^[A-Z]{2}$/;
 export const REGION_RE = /^[A-Z]{2}-[A-Za-z0-9]{1,16}$/; // '<country>-<subdivision>' as the holiday rules list it
+/** How many countries can be compared with yours (Settings.others): one more, so two countries in all. */
+export const MAX_OTHERS = 1;
 
 const BY_TZ: Record<string, string> = {
   'Europe/Bucharest': 'RO',
@@ -55,7 +57,7 @@ export function guessCountry(timeZone?: string, language?: string): string {
 }
 
 export function defaultSettings(): Settings {
-  return { holidays: true, country: guessCountry(), region: null, weekStart: 'Monday', allowance: 25, view: 'calendar' };
+  return { holidays: true, country: guessCountry(), region: null, others: [], weekStart: 'Monday', allowance: 25, view: 'calendar' };
 }
 
 function isTrip(v: unknown): v is Trip {
@@ -69,6 +71,15 @@ const LEGACY_COUNTRIES: Record<string, { country: string; region: string | null 
   'GB-EAW': { country: 'GB', region: 'GB-ENG' },
   'GB-SCT': { country: 'GB', region: 'GB-SCT' },
 };
+
+/** A saved country pick, or null for anything else: a bad code, a region of another country, or a repeat of `taken`. */
+function pickOf(v: unknown, taken: string[]): CountryPick | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o.country !== 'string' || !COUNTRY_RE.test(o.country) || taken.includes(o.country)) return null;
+  const region = typeof o.region === 'string' && REGION_RE.test(o.region) && o.region.startsWith(o.country) ? o.region : null;
+  return { country: o.country, region };
+}
 
 /** Saved settings are merged over the defaults, so keys added later get their default. */
 export function mergeSettings(saved: unknown): Settings {
@@ -84,10 +95,19 @@ export function mergeSettings(saved: unknown): Settings {
   }
   if (typeof s.region === 'string' && REGION_RE.test(s.region) && s.region.startsWith(country)) region = s.region;
   else if (s.region === null) region = null;
+  // The other countries: each once, never your own, and no more than MAX_OTHERS.
+  const others: CountryPick[] = [];
+  if (Array.isArray(s.others)) {
+    for (const v of s.others) {
+      const pick = pickOf(v, [country, ...others.map((o) => o.country)]);
+      if (pick && others.length < MAX_OTHERS) others.push(pick);
+    }
+  }
   return {
     holidays: typeof s.holidays === 'boolean' ? s.holidays : d.holidays,
     country,
     region,
+    others,
     weekStart: s.weekStart === 'Sunday' || s.weekStart === 'Monday' ? s.weekStart : d.weekStart,
     allowance: typeof s.allowance === 'number' && Number.isFinite(s.allowance) ? Math.min(99, Math.max(0, Math.round(s.allowance))) : d.allowance,
     view: s.view === 'heatmap' || s.view === 'calendar' ? s.view : d.view,

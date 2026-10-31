@@ -27,6 +27,20 @@ export type HolidayLookup = (year: number) => HolidayMap;
 
 export const EMPTY_LOOKUP: HolidayLookup = () => ({});
 
+/** PROTOTYPE: another country whose holidays are drawn beside yours, with its own lookup (see Settings.others). */
+export interface OtherCountry {
+  code: string; // 'DE'
+  name: string; // 'Germany'
+  lookup: HolidayLookup;
+}
+
+/** A holiday of one of the other countries on a day: who is off, and what the day is called there. */
+export interface OtherHoliday {
+  code: string;
+  name: string;
+  holiday: string;
+}
+
 /** Holiday types that count as a day off. Bank, school, optional and observance do not. */
 export const COUNTED_TYPES: HolidayType[] = ['public'];
 

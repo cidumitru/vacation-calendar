@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { RO_2026 } from '../__fixtures__/holidays';
 import { bestBlock, buildContext, buildYear, count, draftRange, freeFn, isFree, valueOf } from '../calendar';
-import { EMPTY_LOOKUP, toHolidayMap, type HolidayLookup } from '../holidays';
+import { EMPTY_LOOKUP, toHolidayMap, type HolidayLookup, type OtherCountry } from '../holidays';
 import { SEED_TRIPS } from '../storage';
 import type { Settings, Trip } from '../types';
 
-const RO: Settings = { holidays: true, country: 'RO', region: null, weekStart: 'Monday', allowance: 25, view: 'calendar' };
+const RO: Settings = { holidays: true, country: 'RO', region: null, others: [], weekStart: 'Monday', allowance: 25, view: 'calendar' };
 const ro2026 = toHolidayMap(RO_2026, 2026);
 // 2027: the January holidays, for the cross-year and block tests below.
 const ro2027 = {
@@ -218,5 +218,36 @@ describe('Day cell states', () => {
     expect(draftRange('2026-03-10', '2026-03-06')).toEqual(['2026-03-06', '2026-03-10']);
     expect(draftRange('2026-03-06', '')).toEqual(['2026-03-06', '2026-03-06']);
     expect(draftRange('', '')).toEqual(['', '']);
+  });
+});
+
+describe('Another country compared (prototype)', () => {
+  // Germany 2026, the dates that matter here: Good Friday and Easter Monday fall with Romania's; Whit Monday is 25 May
+  // there and 1 June in Romania; German Unity Day is a Saturday.
+  const de2026: Record<string, string> = { '2026-01-01': 'New Year’s Day', '2026-04-03': 'Good Friday', '2026-04-06': 'Easter Monday', '2026-05-01': 'Labour Day', '2026-05-25': 'Whit Monday', '2026-10-03': 'German Unity Day', '2026-12-25': 'Christmas Day', '2026-12-26': 'Boxing Day' };
+  const DE: OtherCountry = { code: 'DE', name: 'Germany', lookup: (y) => (y === 2026 ? de2026 : {}) };
+  const year = buildYear(2026, buildContext(SEED_TRIPS, '', '', RO, lookup, '', [DE]));
+  const cell = (key: string) => year.months[Number(key.slice(5, 7)) - 1].cells.find((c) => c?.key === key)!;
+
+  it('notes on every day which other countries are off, without changing what the day costs', () => {
+    expect(cell('2026-05-01').others).toEqual([{ code: 'DE', name: 'Germany', holiday: 'Labour Day' }]);
+    expect(cell('2026-05-01').kind).toBe('holiday');
+    expect(cell('2026-05-25').others).toEqual([{ code: 'DE', name: 'Germany', holiday: 'Whit Monday' }]);
+    expect(cell('2026-05-25').kind).toBe('plain'); // a holiday abroad is a working day here
+    expect(cell('2026-05-25').holiday).toBe('');
+    expect(cell('2026-06-01').others).toEqual([]); // Romania's Whit Monday, a working day in Germany
+    expect(cell('2026-06-01').kind).toBe('holiday');
+    expect(year.used).toBe(17); // leave as without the comparison
+  });
+
+  it('names the other country’s holiday in the accessible name', () => {
+    expect(cell('2026-05-25').aria).toBe('Mon 25 May, Whit Monday in Germany');
+    expect(cell('2026-12-26').aria).toBe('Sat 26 December, Saint Stephen’s Day, Boxing Day in Germany');
+  });
+
+  it('leaves the other country out when holidays are off, and without it the cells have an empty list', () => {
+    const off = buildYear(2026, buildContext(SEED_TRIPS, '', '', { ...RO, holidays: false }, lookup, '', [DE]));
+    expect(off.months[4].cells.find((c) => c?.key === '2026-05-25')!.others).toEqual([]);
+    expect(buildYear(2026, ctxOf(SEED_TRIPS)).months[4].cells.find((c) => c?.key === '2026-05-25')!.others).toEqual([]);
   });
 });

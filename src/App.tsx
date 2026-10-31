@@ -2,6 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useS
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { AppSidebar, type Segment, type TripRow } from '@/components/app-sidebar';
+import { COMPARE_STYLE, compareCounts } from '@/components/country-compare';
 import type { NewBreak } from '@/components/insights-dialog';
 import { SettingsButton, SettingsPanel } from '@/components/settings-panel';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
@@ -12,7 +13,7 @@ import { isMobileViewport, useIsMobile } from '@/hooks/use-mobile';
 import { useYearScroller } from '@/hooks/use-year-scroller';
 import { buildContext, buildYear, count, draftRange, ownMap, type DayCell, type YearModel } from '@/lib/calendar';
 import { daysBetween, eachDay, fmt, iso, yearOf } from '@/lib/dates';
-import { countHolidays, toHolidayMap, type HolidayLookup, type HolidayMap } from '@/lib/holidays';
+import { countHolidays, toHolidayMap, type HolidayLookup, type HolidayMap, type OtherCountry } from '@/lib/holidays';
 import { holidayStore } from '@/lib/holidayStore';
 import { PALETTE } from '@/lib/palette';
 import { load, save } from '@/lib/storage';
@@ -83,25 +84,36 @@ export function App() {
     if (settings.holidays) holidayStore.load();
   }, [settings.holidays]);
 
-  const lookup = useMemo<HolidayLookup>(() => {
+  /** A memoised lookup of one country's (and region's) holidays per year, from the store as it is now. */
+  const lookupOf = (country: string, region: string | null, on: boolean): HolidayLookup => {
     const maps = new Map<number, HolidayMap>();
     return (y: number) => {
       let m = maps.get(y);
       if (!m) {
-        m = settings.holidays ? toHolidayMap(holidayStore.get(settings.country, settings.region, y) ?? [], y) : {};
+        m = on ? toHolidayMap(holidayStore.get(country, region, y) ?? [], y) : {};
         maps.set(y, m);
       }
       return m;
     };
-    // holidayVersion changes when the rules arrive.
+  };
+  // holidayVersion changes when the rules arrive.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const lookup = useMemo<HolidayLookup>(() => lookupOf(settings.country, settings.region, settings.holidays), [settings.holidays, settings.country, settings.region, holidayVersion]);
+  const countries = holidayStore.countries();
+  const countryName = (code: string) => countries?.find((c) => c.code === code)?.name ?? code;
+  // PROTOTYPE (country-compare): the other countries' holidays, drawn beside yours when the page runs a prototype.
+  const others = useMemo<OtherCountry[]>(
+    () => (COMPARE_STYLE === 'off' ? [] : settings.others.map((o) => ({ code: o.country, name: countryName(o.country), lookup: lookupOf(o.country, o.region, settings.holidays) }))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.holidays, settings.country, settings.region, holidayVersion]);
+    [settings.holidays, settings.others, holidayVersion],
+  );
+  const compare = others.length ? { mine: countryName(settings.country), others } : null;
 
   // ---- Year models, cached until trips, the draft, settings or holiday data change.
   const own = useMemo(() => ownMap(trips), [trips]);
   const ownRef = useRef(own);
   ownRef.current = own;
-  const ctx = useMemo(() => buildContext(own, draft.from, draft.to, settings, lookup, draft.id), [own, draft.from, draft.to, settings, lookup, draft.id]);
+  const ctx = useMemo(() => buildContext(own, draft.from, draft.to, settings, lookup, draft.id, others), [own, draft.from, draft.to, settings, lookup, draft.id, others]);
   const cacheRef = useRef<{ ctx: typeof ctx; years: Map<number, YearModel> } | null>(null);
   if (!cacheRef.current || cacheRef.current.ctx !== ctx) cacheRef.current = { ctx, years: new Map() };
   const cache = cacheRef.current.years;
@@ -330,6 +342,7 @@ export function App() {
             year={year}
             showToday={!atToday}
             holidaysOn={settings.holidays}
+            compare={compare}
             view={settings.view}
             onViewChange={(view) => patchSettings({ view })}
             onPrev={() => jumpTo(year - 1, true)}
@@ -338,7 +351,7 @@ export function App() {
           >
             <SettingsButton ref={settingsButtonRef} open={isMobile ? settingsMobile : settingsOpen} onClick={toggleSettings} />
           </AppHeader>
-          <YearCalendar years={years} view={settings.view} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} onOpenInsights={openInsights} />
+          <YearCalendar years={years} view={settings.view} compare={compare?.mine ?? null} scrollerRef={scroller.ref} onScroll={scroller.onScroll} onTapDay={tapDay} onOpenInsights={openInsights} />
           <TripPopover
             draft={draft}
             trip={shownTrip}
@@ -374,12 +387,14 @@ export function App() {
           triggerRef={settingsButtonRef}
           settings={settings}
           year={year}
-          countries={holidayStore.countries()}
+          countries={countries}
           regions={holidayStore.regions(settings.country)}
           holidayCount={countHolidays(lookup(year))}
           status={holidayStore.status()}
           onRetry={() => holidayStore.retry()}
           onChange={patchSettings}
+          regionsOf={(c) => holidayStore.regions(c)}
+          compareCounts={settings.holidays ? compareCounts(lookup(year), others, year) : []}
         />
         {insightsMounted && (
           <Suspense fallback={null}>

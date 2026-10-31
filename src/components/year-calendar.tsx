@@ -1,5 +1,6 @@
 import { LightbulbIcon } from 'lucide-react';
 import { memo, type CSSProperties, type RefObject, type UIEvent } from 'react';
+import { COMPARE_STYLE, CompareDay, compareBand } from '@/components/country-compare';
 import { HEAT_CLASS, heatLevel } from '@/components/heat-scale';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -12,6 +13,8 @@ import { cn } from '@/lib/utils';
 interface Props {
   years: YearModel[];
   view: CalendarView;
+  /** PROTOTYPE: your country's name while another country is compared with it (see country-compare), else null. */
+  compare: string | null;
   scrollerRef: RefObject<HTMLDivElement | null>;
   onScroll: (e: UIEvent<HTMLDivElement>) => void;
   onTapDay: (key: string) => void;
@@ -19,7 +22,7 @@ interface Props {
   onOpenInsights: (year: number) => void;
 }
 
-export function YearCalendar({ years, view, scrollerRef, onScroll, onTapDay, onOpenInsights }: Props) {
+export function YearCalendar({ years, view, compare, scrollerRef, onScroll, onTapDay, onOpenInsights }: Props) {
   return (
     <div
       ref={scrollerRef}
@@ -27,7 +30,7 @@ export function YearCalendar({ years, view, scrollerRef, onScroll, onTapDay, onO
       className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 [overflow-anchor:none] sm:px-6"
     >
       {years.map((y) => (
-        <YearSection key={y.y} model={y} view={view} onTapDay={onTapDay} onOpenInsights={onOpenInsights} />
+        <YearSection key={y.y} model={y} view={view} compare={compare} onTapDay={onTapDay} onOpenInsights={onOpenInsights} />
       ))}
     </div>
   );
@@ -36,12 +39,13 @@ export function YearCalendar({ years, view, scrollerRef, onScroll, onTapDay, onO
 interface SectionProps {
   model: YearModel;
   view: CalendarView;
+  compare: string | null;
   onTapDay: (key: string) => void;
   onOpenInsights: (year: number) => void;
 }
 
 // Memoised on the cached year model: typing a trip name never re-renders a year.
-const YearSection = memo(function YearSection({ model, view, onTapDay, onOpenInsights }: SectionProps) {
+const YearSection = memo(function YearSection({ model, view, compare, onTapDay, onOpenInsights }: SectionProps) {
   return (
     <section data-year={model.y} aria-label={model.label} className="pt-5 pb-10">
       <div className="mb-5 flex items-center gap-3">
@@ -54,7 +58,7 @@ const YearSection = memo(function YearSection({ model, view, onTapDay, onOpenIns
       </div>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,100%),1fr))] gap-x-8 gap-y-8">
         {model.months.map((m, i) => (
-          <Month key={m.name} model={m} index={i} weekdays={model.weekdays} view={view} onTapDay={onTapDay} />
+          <Month key={m.name} model={m} index={i} weekdays={model.weekdays} view={view} compare={compare} onTapDay={onTapDay} />
         ))}
       </div>
     </section>
@@ -67,10 +71,11 @@ interface MonthProps {
   index: number;
   weekdays: string[];
   view: CalendarView;
+  compare: string | null;
   onTapDay: (key: string) => void;
 }
 
-function Month({ model, index, weekdays, view, onTapDay }: MonthProps) {
+function Month({ model, index, weekdays, view, compare, onTapDay }: MonthProps) {
   const heat = view === 'heatmap';
   return (
     <section data-month={index} aria-label={model.label} className="flex flex-col gap-2">
@@ -90,7 +95,17 @@ function Month({ model, index, weekdays, view, onTapDay }: MonthProps) {
       <div className="grid grid-cols-7 gap-y-0.5">
         {model.cells.map((c, i) => {
           if (!c) return <span key={`b${i}`} className="h-8" aria-hidden="true" />;
-          if (!heat) return <Day key={c.key} cell={c} onTapDay={onTapDay} />;
+          if (!heat) {
+            // PROTOTYPE: with another country compared, its days are drawn by country-compare; trips and the draft stay as they are.
+            if (compare !== null && c.kind !== 'trip' && c.kind !== 'draft') {
+              const col = i % 7;
+              const band = compareBand(COMPARE_STYLE, c);
+              const joinLeft = !!band && col > 0 && compareBand(COMPARE_STYLE, model.cells[i - 1]) === band;
+              const joinRight = !!band && col < 6 && compareBand(COMPARE_STYLE, model.cells[i + 1]) === band;
+              return <CompareDay key={c.key} style={COMPARE_STYLE} cell={c} mine={compare} joinLeft={joinLeft} joinRight={joinRight} fallbackTip={gainText(c)} onTapDay={onTapDay} />;
+            }
+            return <Day key={c.key} cell={c} onTapDay={onTapDay} />;
+          }
           // Shaded working days join into one run across the row, like the calendar bands; every other day keeps its own band's joins.
           const col = i % 7;
           const hot = heated(c);

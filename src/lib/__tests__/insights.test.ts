@@ -7,7 +7,7 @@ import { MIN_SUGGESTION_VALUE, buildInsights, clusterName, overlaps, planLeave, 
 import { SEED_TRIPS } from '../storage';
 import type { Settings, Trip } from '../types';
 
-const RO: Settings = { holidays: true, country: 'RO', region: null, weekStart: 'Monday', allowance: 25, view: 'calendar' };
+const RO: Settings = { holidays: true, country: 'RO', region: null, others: [], weekStart: 'Monday', allowance: 25, view: 'calendar' };
 const ro2026 = toHolidayMap(RO_2026, 2026);
 const ro2027 = { '2027-01-01': 'New Year’s Day', '2027-01-02': 'Day after New Year’s Day', '2027-01-06': 'Epiphany', '2027-01-07': 'Saint John the Baptist' };
 const lookup: HolidayLookup = (y) => (y === 2026 ? ro2026 : y === 2027 ? ro2027 : {});

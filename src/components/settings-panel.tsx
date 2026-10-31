@@ -2,20 +2,20 @@
 // button in the header. Its content is the holidays, the country and region, the week start, the yearly allowance and the
 // appearance.
 
-import { CheckIcon, ChevronsUpDownIcon, MinusIcon, PlusIcon, Settings2Icon, XIcon } from 'lucide-react';
-import { useState, type Ref, type RefObject } from 'react';
+import { MinusIcon, PlusIcon, Settings2Icon, XIcon } from 'lucide-react';
+import type { Ref, RefObject } from 'react';
+import { Combobox } from '@/components/combobox';
+import { COMPARE_STYLE, OthersField, compareNote, type CompareCount } from '@/components/country-compare';
 import { Button } from '@/components/ui/button';
 import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from '@/components/ui/field';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import type { LoadStatus } from '@/lib/holidayStore';
 import type { Country, Region } from '@/lib/holidays';
-import type { Settings, WeekStart } from '@/lib/types';
+import type { CountryPick, Settings, WeekStart } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 const NATIONWIDE = 'nationwide'; // the no-region option; region codes are '<country>-<subdivision>', so none can clash
@@ -54,6 +54,9 @@ interface Props {
   status: LoadStatus;
   onRetry: () => void;
   onChange: (patch: Partial<Settings>) => void;
+  /** PROTOTYPE (country-compare): the regions of any country, and the figures of the countries compared with yours. */
+  regionsOf: (country: string) => Region[];
+  compareCounts: CompareCount[];
 }
 
 export function SettingsPanel({
@@ -71,6 +74,8 @@ export function SettingsPanel({
   status,
   onRetry,
   onChange,
+  regionsOf,
+  compareCounts,
 }: Props) {
   const known = !countries || countries.some((c) => c.code === settings.country);
   const countryOptions: Country[] = countries ? [...countries] : [];
@@ -93,7 +98,8 @@ export function SettingsPanel({
     noteIsError = true;
   } else {
     note = `${holidayCount} public ${holidayCount === 1 ? 'holiday' : 'holidays'} in ${year}.`;
-    if (regions.length && !settings.region) note += ' Nationwide days only; pick a region for local ones.';
+    if (compareCounts.length) note += ` ${compareNote(compareCounts)}`;
+    else if (regions.length && !settings.region) note += ' Nationwide days only; pick a region for local ones.';
   }
   const canRetry = settings.holidays && !!status.error && !status.loading;
 
@@ -157,7 +163,7 @@ export function SettingsPanel({
               placeholder="Search country…"
               empty={!countries && status.loading ? 'Loading countries…' : 'No country found.'}
               disabled={!settings.holidays}
-              onChange={(country) => onChange({ country, region: null })}
+              onChange={(country) => onChange({ country, region: null, others: settings.others.filter((o) => o.country !== country) })}
             />
             {showRegion && (
               <Combobox
@@ -167,6 +173,17 @@ export function SettingsPanel({
                 placeholder="Search region…"
                 empty="No region found."
                 onChange={(region) => onChange({ region: region === NATIONWIDE ? null : region })}
+              />
+            )}
+            {COMPARE_STYLE !== 'off' && (
+              <OthersField
+                style={COMPARE_STYLE}
+                others={settings.others}
+                mine={settings.country}
+                countries={countries}
+                regionsOf={regionsOf}
+                disabled={!settings.holidays}
+                onChange={(others: CountryPick[]) => onChange({ others })}
               />
             )}
             <FieldDescription aria-live="polite" className={cn(noteIsError && 'text-destructive')}>
@@ -283,58 +300,5 @@ export function SettingsPanel({
     >
       <div className="my-2 h-[calc(100svh-1rem)] w-(--settings-width)">{body}</div>
     </aside>
-  );
-}
-
-interface ComboboxProps {
-  id?: string;
-  'aria-label'?: string;
-  value: string;
-  /** In the order given until a search narrows them; the one whose code is the value is ticked. */
-  options: { code: string; name: string }[];
-  /** The search box's placeholder. */
-  placeholder: string;
-  /** Shown when nothing matches the search. */
-  empty: string;
-  disabled?: boolean;
-  onChange: (code: string) => void;
-}
-
-/** A button showing the chosen option that opens a searchable list; the search matches names and codes. */
-function Combobox({ id, 'aria-label': ariaLabel, value, options, placeholder, empty, disabled, onChange }: ComboboxProps) {
-  const [open, setOpen] = useState(false);
-  const current = options.find((o) => o.code === value);
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button id={id} aria-label={ariaLabel} variant="outline" role="combobox" aria-expanded={open} disabled={disabled} className="w-full justify-between font-normal">
-          <span className="truncate">{current?.name ?? value}</span>
-          <ChevronsUpDownIcon className="text-muted-foreground" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
-        <Command>
-          <CommandInput placeholder={placeholder} />
-          <CommandList>
-            <CommandEmpty>{empty}</CommandEmpty>
-            <CommandGroup>
-              {options.map((o) => (
-                <CommandItem
-                  key={o.code}
-                  value={`${o.name} ${o.code}`}
-                  onSelect={() => {
-                    onChange(o.code);
-                    setOpen(false);
-                  }}
-                >
-                  {o.name}
-                  <CheckIcon className={cn('ml-auto', o.code === value ? 'opacity-100' : 'opacity-0')} />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
   );
 }

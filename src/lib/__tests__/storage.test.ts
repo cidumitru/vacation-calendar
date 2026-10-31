@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { STALE_KEYS, STORE_KEY, guessCountry, load, mergeSettings, save } from '../storage';
+import { MAX_OTHERS, STALE_KEYS, STORE_KEY, guessCountry, load, mergeSettings, save } from '../storage';
 
 class MemoryStorage {
   map = new Map<string, string>();
@@ -43,6 +43,17 @@ describe('Settings merge and migration', () => {
     expect(s.weekStart).toBe('Monday');
     expect(s.holidays).toBe(true);
     expect(s.view).toBe('calendar');
+  });
+
+  it('keeps the other countries to compare with, each once, never your own, with a region of their own', () => {
+    expect(mergeSettings({ country: 'RO' }).others).toEqual([]);
+    expect(mergeSettings({ country: 'RO', others: [{ country: 'DE', region: 'DE-BY' }] }).others).toEqual([{ country: 'DE', region: 'DE-BY' }]);
+    expect(mergeSettings({ country: 'RO', others: [{ country: 'DE', region: 'GB-SCT' }] }).others).toEqual([{ country: 'DE', region: null }]);
+    expect(mergeSettings({ country: 'RO', others: [{ country: 'RO' }, { country: 'DE' }] }).others).toEqual([{ country: 'DE', region: null }]);
+    expect(mergeSettings({ country: 'RO', others: [{ country: 'de' }, 'DE', null] }).others).toEqual([]);
+    const many = mergeSettings({ country: 'RO', others: [{ country: 'DE' }, { country: 'DE' }, { country: 'FR' }, { country: 'IT' }] }).others;
+    expect(many).toHaveLength(MAX_OTHERS);
+    expect(many[0]).toEqual({ country: 'DE', region: null });
   });
 
   it('keeps the heat map view and drops an unknown one', () => {
