@@ -1,16 +1,15 @@
 // The trip form on the days picked in the calendar. On desktop it is a popover: after the first click a small note on
 // that day asking for the last one, taking no focus so the next click lands on a day; after the second the form,
-// anchored to the day clicked: the dates (a date-range picker to adjust them), what they cost, a name, Add and Cancel.
-// It follows its day as the calendar scrolls, hides while that day is off screen, stays open when something else is
+// anchored to the day clicked: the first and last day, each a picker, what they cost, a name, Add and Cancel. It
+// follows its day as the calendar scrolls, hides while that day is off screen, stays open when something else is
 // clicked (another day simply starts a new pick), and Escape cancels. On phones there is no second click: a tap
 // opens a small sheet from the bottom with the day and one button, Start a break here, and that button grows the
-// sheet into the form with the day picked; its picker stretches the dates, and when the day sits in a break worth
-// taking one tap sets the dates to that break.
-
+// sheet into the form with the day as the first day; the last day is picked there, and when the day sits in a break
+// worth taking one tap sets both to that break.
 import { CalendarPlusIcon, PlusIcon, SparklesIcon, XIcon } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
 import { createPortal, flushSync } from 'react-dom';
-import { DateRangePicker } from '@/components/date-range-picker';
+import { DatePicker } from '@/components/date-picker';
 import { heatLevel } from '@/components/heat-scale';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,35 +52,28 @@ interface Props {
 export function TripPopover(p: Props) {
   const complete = !!p.draft.from && !!p.draft.to;
   const inputRef = useRef<HTMLInputElement>(null);
-  if (p.isMobile) return <TripSheet {...p} open={complete} inputRef={inputRef} />;
+  // On phones the sheet opens on the first day alone; the last day is picked in it.
+  if (p.isMobile) return <TripSheet {...p} open={!!p.draft.from} inputRef={inputRef} />;
   return <TripCard {...p} complete={complete} inputRef={inputRef} />;
 }
 
 type FormProps = Props & { inputRef: RefObject<HTMLInputElement | null> };
 
-/** The form itself: the dates, what they cost, the name, Add and Cancel. */
+/** The form itself: the first and last day, what they cost, the name, Add and Cancel. */
 function TripForm({ hint, ...p }: FormProps & { hint?: boolean }) {
+  const pick = (from: string, to: string) => (to && to < from ? p.onRangeChange(to, from) : p.onRangeChange(from, to));
+  const shared = { yearInView: p.yearInView, minYear: p.minYear, maxYear: p.maxYear, weekStart: p.weekStart };
   return (
     <form onSubmit={p.onAdd} className="flex flex-col gap-3">
-      <div className="flex items-center gap-1">
-        <div className="min-w-0 flex-1">
-          <DateRangePicker
-            id="trip-dates"
-            from={p.draft.from}
-            to={p.draft.to}
-            text={p.rangeText}
-            yearInView={p.yearInView}
-            minYear={p.minYear}
-            maxYear={p.maxYear}
-            weekStart={p.weekStart}
-            onChange={p.onRangeChange}
-          />
+      <div className="grid grid-cols-2 gap-2">
+        <div className="grid gap-1">
+          <span className="text-xs text-muted-foreground">First day</span>
+          <DatePicker id="trip-from" label="First day" placeholder="Pick a day" value={p.draft.from} near={p.draft.to} onChange={(k) => pick(k, p.draft.to)} {...shared} />
         </div>
-        {hint && (
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Cancel" onClick={p.onClear}>
-            <XIcon />
-          </Button>
-        )}
+        <div className="grid gap-1">
+          <span className="text-xs text-muted-foreground">Last day</span>
+          <DatePicker id="trip-to" label="Last day" placeholder="Pick the last day" value={p.draft.to} near={p.draft.from} onChange={(k) => pick(p.draft.from, k)} {...shared} />
+        </div>
       </div>
       <p className={cn('text-xs', p.error ? 'text-destructive' : 'text-muted-foreground')} aria-live="polite">
         {p.error || p.summary}
@@ -95,16 +87,30 @@ function TripForm({ hint, ...p }: FormProps & { hint?: boolean }) {
         value={p.draft.name}
         onChange={(e) => p.onNameChange(e.target.value)}
       />
-      <div className={cn('flex gap-2', hint ? 'items-center' : 'flex-col')}>
-        <Button type="submit" size={hint ? 'default' : 'lg'} className="flex-1">
-          <PlusIcon />
-          Add trip
-        </Button>
-        <Button type="button" variant={hint ? 'ghost' : 'outline'} size={hint ? 'default' : 'lg'} onClick={p.onClear}>
-          Cancel
-        </Button>
-      </div>
-      {hint && <p className="text-[11px] text-muted-foreground">Enter adds · Esc cancels</p>}
+      {hint ? (
+        <>
+          <div className="flex items-center gap-2">
+            <Button type="submit" className="flex-1">
+              <PlusIcon />
+              Add trip
+            </Button>
+            <Button type="button" variant="ghost" onClick={p.onClear}>
+              Cancel
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">Enter adds · Esc cancels</p>
+        </>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <Button type="submit" size="lg" className="w-full">
+            <PlusIcon />
+            Add trip
+          </Button>
+          <Button type="button" variant="outline" size="lg" className="w-full" onClick={p.onClear}>
+            Cancel
+          </Button>
+        </div>
+      )}
     </form>
   );
 }
@@ -224,7 +230,7 @@ function TripSheet(p: FormProps & { open: boolean }) {
             <SheetHeader className="flex-row items-start gap-3 px-4 pt-3 pb-1">
               <div className="min-w-0 flex-1 leading-tight">
                 <SheetTitle className="text-base">{expanded ? 'New trip' : p.rangeText}</SheetTitle>
-                <SheetDescription className="mt-0.5 text-xs">{expanded ? worth || 'Stretch the dates in the picker, give it a name and add it.' : kindOf(p.tapped)}</SheetDescription>
+                <SheetDescription className="mt-0.5 text-xs">{expanded ? worth || 'Pick the last day, give it a name and add it.' : kindOf(p.tapped)}</SheetDescription>
               </div>
               <Button type="button" variant="secondary" size="icon-sm" className="-mt-0.5 -mr-1 rounded-full" aria-label="Close" onClick={p.onClear}>
                 <XIcon />

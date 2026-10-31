@@ -139,9 +139,9 @@ export function App() {
   const tapDay = useCallback((key: string) => {
     setErr('');
     setAnchorKey(key);
-    // On phones there is no second click: the form opens with the day picked, and its picker stretches the dates.
+    // On phones there is no second click: the sheet opens with the day as the first day, and the last day is picked in it.
     if (isMobileRef.current) {
-      setDraft((d) => ({ ...d, from: key, to: key }));
+      setDraft((d) => ({ ...d, from: key, to: '' }));
       return;
     }
     setDraft((d) => {
