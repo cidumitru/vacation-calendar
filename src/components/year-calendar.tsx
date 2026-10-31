@@ -189,7 +189,18 @@ function Day({ cell, onTapDay }: DayProps) {
 /** Bands of the calendar view that join on their own in the heat map: trips, weekends and holidays. */
 const JOINS: Partial<Record<DayKind, true>> = { trip: true, weekend: true, holiday: true };
 
-const HOLIDAY_TILE = 'bg-destructive/10 text-destructive dark:bg-destructive/20';
+// PROTOTYPE: how a public holiday's tile is coloured in the heat map, picked with ?hol=a|b|c|d in the URL; without it the current one.
+const HOLIDAY_STYLE = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('hol') : null;
+const HOLIDAY_TILE =
+  HOLIDAY_STYLE === 'a'
+    ? 'bg-destructive text-white' // solid, as the Insights map draws it
+    : HOLIDAY_STYLE === 'b'
+      ? 'bg-destructive/20 text-destructive dark:bg-destructive/35' // the tint, twice as deep
+      : HOLIDAY_STYLE === 'c'
+        ? 'bg-muted text-destructive' // a free day like the weekends: grey tile, red number
+        : HOLIDAY_STYLE === 'd'
+          ? 'bg-destructive/5 inset-ring-[1.5px] inset-ring-destructive/70 text-destructive dark:bg-destructive/15' // outlined
+          : 'bg-destructive/10 text-destructive dark:bg-destructive/20'; // current
 
 /** A working day worth taking off: shaded, and joined to its shaded neighbours. */
 function heated(c: DayCell | null | undefined): boolean {
