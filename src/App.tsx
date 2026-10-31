@@ -2,7 +2,7 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState, useS
 import { toast } from 'sonner';
 import { AppHeader } from '@/components/app-header';
 import { AppSidebar, type Segment, type TripRow } from '@/components/app-sidebar';
-import { DayInfo, loadDayInfoStyle, saveDayInfoStyle, type DayInfoStyle } from '@/components/day-info';
+import { DaySheet } from '@/components/day-sheet';
 import type { NewBreak } from '@/components/insights-dialog';
 import { SettingsButton, SettingsPanel } from '@/components/settings-panel';
 import { SidebarInset, SidebarProvider } from '@/components/ui/sidebar';
@@ -40,13 +40,8 @@ export function App() {
   // The day the trip popover sits on: the day clicked last, or the end of a range picked in its date picker.
   const [anchorKey, setAnchorKey] = useState('');
   const [err, setErr] = useState('');
-  // On phones a tap shows the day first (see day-info); the trip starts or ends from the buttons there.
+  // On phones a tap shows the day first, in a sheet (see day-sheet); the trip starts or ends from the buttons there.
   const [dayInfo, setDayInfo] = useState('');
-  const [dayInfoStyle, setDayInfoStyle] = useState<DayInfoStyle>(loadDayInfoStyle);
-  const changeDayInfoStyle = (s: DayInfoStyle) => {
-    setDayInfoStyle(s);
-    saveDayInfoStyle(s);
-  };
   // On phones the months stack in one column, so "today" is the current month there; on wider screens it is the year.
   const isMobile = useIsMobile();
   const isMobileRef = useRef(isMobile);
@@ -165,13 +160,11 @@ export function App() {
     });
   }, []);
 
-  // ---- The day info's buttons (phones).
+  // ---- The day sheet's buttons (phones). The sheet stays up after the first day, saying to tap the last one.
   const startAt = (key: string) => {
     setDraft({ name: '', from: key, to: '' });
     setAnchorKey(key);
     setErr('');
-    // The bar stays to say the first day is picked; the sheet and the card get out of the way.
-    if (dayInfoStyle !== 'bar') setDayInfo('');
   };
   const endAt = (key: string) => {
     setDraft((d) => (key < d.from ? { ...d, from: key, to: d.from } : { ...d, to: key }));
@@ -361,15 +354,11 @@ export function App() {
             onClear={clearDraft}
             onAdd={addTrip}
           />
-          <DayInfo
+          <DaySheet
             cell={dayCell}
             trip={dayInfo ? (own[dayInfo] ?? null) : null}
             draftFrom={draft.to ? '' : draft.from}
             year={year}
-            style={dayInfoStyle}
-            onStyleChange={changeDayInfoStyle}
-            scrollerRef={scroller.ref}
-            mountedYears={`${yFrom}-${yTo}`}
             onClose={() => setDayInfo('')}
             onStart={startAt}
             onEnd={endAt}
