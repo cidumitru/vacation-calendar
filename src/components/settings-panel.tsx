@@ -9,7 +9,6 @@ import { ButtonGroup, ButtonGroupText } from '@/components/ui/button-group';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Field, FieldContent, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from '@/components/ui/field';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { Switch } from '@/components/ui/switch';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -19,7 +18,7 @@ import type { Country, Region } from '@/lib/holidays';
 import type { Settings, WeekStart } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-const NATIONWIDE = 'nationwide'; // Radix Select keeps '' for its placeholder
+const NATIONWIDE = 'nationwide'; // the no-region option; region codes are '<country>-<subdivision>', so none can clash
 const SUBTITLE = 'Public holidays, week start, your yearly allowance and the appearance.';
 
 export const SETTINGS_ID = 'settings-panel';
@@ -151,28 +150,24 @@ export function SettingsPanel({
 
           <Field>
             <FieldLabel htmlFor="settings-country">Country</FieldLabel>
-            <CountryCombobox
+            <Combobox
               id="settings-country"
               value={settings.country}
               options={countryOptions}
-              loading={!countries && status.loading}
+              placeholder="Search country…"
+              empty={!countries && status.loading ? 'Loading countries…' : 'No country found.'}
               disabled={!settings.holidays}
               onChange={(country) => onChange({ country, region: null })}
             />
             {showRegion && (
-              <Select value={settings.region ?? NATIONWIDE} onValueChange={(v) => onChange({ region: v === NATIONWIDE ? null : v })}>
-                <SelectTrigger className="w-full" aria-label="Region">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NATIONWIDE}>Nationwide only</SelectItem>
-                  {regionOptions.map((r) => (
-                    <SelectItem key={r.code} value={r.code}>
-                      {r.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Combobox
+                aria-label="Region"
+                value={settings.region ?? NATIONWIDE}
+                options={[{ code: NATIONWIDE, name: 'Nationwide only' }, ...regionOptions]}
+                placeholder="Search region…"
+                empty="No region found."
+                onChange={(region) => onChange({ region: region === NATIONWIDE ? null : region })}
+              />
             )}
             <FieldDescription aria-live="polite" className={cn(noteIsError && 'text-destructive')}>
               {note}
@@ -292,42 +287,48 @@ export function SettingsPanel({
 }
 
 interface ComboboxProps {
-  id: string;
+  id?: string;
+  'aria-label'?: string;
   value: string;
-  options: Country[];
-  loading: boolean;
-  disabled: boolean;
+  /** In the order given until a search narrows them; the one whose code is the value is ticked. */
+  options: { code: string; name: string }[];
+  /** The search box's placeholder. */
+  placeholder: string;
+  /** Shown when nothing matches the search. */
+  empty: string;
+  disabled?: boolean;
   onChange: (code: string) => void;
 }
 
-function CountryCombobox({ id, value, options, loading, disabled, onChange }: ComboboxProps) {
+/** A button showing the chosen option that opens a searchable list; the search matches names and codes. */
+function Combobox({ id, 'aria-label': ariaLabel, value, options, placeholder, empty, disabled, onChange }: ComboboxProps) {
   const [open, setOpen] = useState(false);
-  const current = options.find((c) => c.code === value);
+  const current = options.find((o) => o.code === value);
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button id={id} variant="outline" role="combobox" aria-expanded={open} disabled={disabled} className="w-full justify-between font-normal">
+        <Button id={id} aria-label={ariaLabel} variant="outline" role="combobox" aria-expanded={open} disabled={disabled} className="w-full justify-between font-normal">
           <span className="truncate">{current?.name ?? value}</span>
           <ChevronsUpDownIcon className="text-muted-foreground" />
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-(--radix-popover-trigger-width) p-0" align="start">
         <Command>
-          <CommandInput placeholder="Search country…" />
+          <CommandInput placeholder={placeholder} />
           <CommandList>
-            <CommandEmpty>{loading ? 'Loading countries…' : 'No country found.'}</CommandEmpty>
+            <CommandEmpty>{empty}</CommandEmpty>
             <CommandGroup>
-              {options.map((c) => (
+              {options.map((o) => (
                 <CommandItem
-                  key={c.code}
-                  value={`${c.name} ${c.code}`}
+                  key={o.code}
+                  value={`${o.name} ${o.code}`}
                   onSelect={() => {
-                    onChange(c.code);
+                    onChange(o.code);
                     setOpen(false);
                   }}
                 >
-                  {c.name}
-                  <CheckIcon className={cn('ml-auto', c.code === value ? 'opacity-100' : 'opacity-0')} />
+                  {o.name}
+                  <CheckIcon className={cn('ml-auto', o.code === value ? 'opacity-100' : 'opacity-0')} />
                 </CommandItem>
               ))}
             </CommandGroup>
