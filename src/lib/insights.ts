@@ -5,6 +5,7 @@
 
 import type { BuildContext, YearModel } from './calendar';
 import { DAY_SHORT, eachDay, ms, yearOf } from './dates';
+import { breakName } from './holidays';
 import type { Trip } from './types';
 
 /** Blocks below this value are left out, as the heat map leaves them bare (see heatLevel in heat-scale). */
@@ -166,21 +167,8 @@ export function planLeave(candidates: Suggestion[], budget: number): LeavePlan {
   return { picks, leave: last.leave, off: last.off, frontier };
 }
 
-/**
- * A name for a break: the holiday it is built around, the two it joins, or the first and last of a longer
- * run. Where two holidays share a date only the first is used.
- */
-export function clusterName(holidays: string[]): string {
-  const names: string[] = [];
-  for (const h of holidays) {
-    const n = h.split(' · ')[0];
-    if (!names.includes(n)) names.push(n);
-  }
-  if (names.length === 0) return 'Break';
-  if (names.length === 1) return names[0];
-  if (names.length === 2) return `${names[0]} & ${names[1]}`;
-  return `${names[0]} – ${names[names.length - 1]}`;
-}
+/** A cluster is named after the holidays inside it; see breakName. */
+export const clusterName = breakName;
 
 export function buildInsights(model: YearModel, ctx: BuildContext): YearInsights {
   const S = ctx.settings;

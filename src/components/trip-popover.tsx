@@ -5,11 +5,12 @@
 // clicked (another day simply starts a new pick), and Escape cancels.
 
 import { PlusIcon, XIcon } from 'lucide-react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { useEffect, useRef, type FormEvent, type RefObject } from 'react';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
+import { useDayAnchor } from '@/hooks/use-day-anchor';
 import type { Draft, WeekStart } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -38,24 +39,12 @@ interface Props {
   onAdd: (e: FormEvent<HTMLFormElement>) => void;
 }
 
-/** What Radix measures to place the popover; the cell as contextElement lets the position follow the scroller. */
-interface Anchor {
-  getBoundingClientRect: () => DOMRect;
-  contextElement?: Element;
-}
-
 export function TripPopover(p: Props) {
-  const [cell, setCell] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    setCell(p.anchorKey ? (p.scrollerRef.current?.querySelector<HTMLElement>(`[data-day="${p.anchorKey}"]`) ?? null) : null);
-  }, [p.anchorKey, p.mountedYears, p.scrollerRef]);
-  const anchor = useMemo<Anchor | null>(() => (cell ? { getBoundingClientRect: () => cell.getBoundingClientRect(), contextElement: cell } : null), [cell]);
-  const anchorRef = useRef<Anchor | null>(null);
-  anchorRef.current = anchor;
-
+  const { cellEl, anchorRef } = useDayAnchor(p.anchorKey, p.scrollerRef, p.mountedYears);
   const picking = !!p.draft.from && !p.draft.to;
   const complete = !!p.draft.from && !!p.draft.to;
-  const open = !!p.draft.from && !!cell;
+  // On phones the first day is picked from the day's own sheet, which already says to tap the last one.
+  const open = !!p.draft.from && !!cellEl && !(p.isMobile && picking);
 
   // Once the range is complete the name field takes focus on desktop, so typing and Enter add the trip; on phones the
   // keyboard would cover the calendar, so the Add button is left one tap away instead.

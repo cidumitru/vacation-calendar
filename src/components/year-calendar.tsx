@@ -171,11 +171,13 @@ function Day({ cell, onTapDay }: DayProps) {
       {dot && <span aria-hidden="true" className={cn('absolute bottom-[3px] left-1/2 size-1 -translate-x-1/2 rounded-full', dot)} />}
     </button>
   );
-  if (!cell.holiday) return button;
+  // Hover tells what the day is worth, as the heat map does; a click starts the trip.
+  const tip = cell.holiday || (cell.kind !== 'trip' ? gainText(cell) : '');
+  if (!tip) return button;
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent>{cell.holiday}</TooltipContent>
+      <TooltipContent>{tip}</TooltipContent>
     </Tooltip>
   );
 }
