@@ -2,12 +2,14 @@
 // that day asking for the last one, taking no focus so the next click lands on a day; after the second the form,
 // anchored to the day clicked: the dates (a date-range picker to adjust them), what they cost, a name, Add and Cancel.
 // It follows its day as the calendar scrolls, hides while that day is off screen, stays open when something else is
-// clicked (another day simply starts a new pick), and Escape cancels. On phones there is no second click: a tap opens
-// the form as a sheet from the bottom with that day picked, its picker stretches the dates, and when the day sits
-// in a break worth taking one tap sets the dates to that break.
+// clicked (another day simply starts a new pick), and Escape cancels. On phones there is no second click: a tap
+// opens a small sheet from the bottom with the day and one button, Start a break here, and that button grows the
+// sheet into the form with the day picked; its picker stretches the dates, and when the day sits in a break worth
+// taking one tap sets the dates to that break.
 
-import { PlusIcon, SparklesIcon, XIcon } from 'lucide-react';
-import { useEffect, useRef, type FormEvent, type RefObject } from 'react';
+import { CalendarPlusIcon, PlusIcon, SparklesIcon, XIcon } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent, type RefObject } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import { DateRangePicker } from '@/components/date-range-picker';
 import { heatLevel } from '@/components/heat-scale';
 import { Button } from '@/components/ui/button';
@@ -163,46 +165,95 @@ function worthOf(c: DayCell | null, year: number): string {
   return b.leave === 1 ? `One day of leave here buys ${off}.` : `${b.leave} days of leave, ${fmt(b.from, year)} – ${fmt(b.to, year)}, buy ${off}.`;
 }
 
-/** Phones: the form as a modal sheet from the bottom, with the name field focused once it is up. */
+/** "Working day", "Weekend" or "Public holiday · Labour Day". */
+function kindOf(c: DayCell | null): string {
+  if (!c) return '';
+  if (c.holiday) return `Public holiday · ${c.holiday}`;
+  return c.kind === 'weekend' ? 'Weekend' : 'Working day';
+}
+
+/**
+ * Phones: a sheet from the bottom that starts small, the day and one button, and grows into the form when the button
+ * is tapped. It is not modal, so another day tapped behind it simply moves it to that day; once the form is up a dim
+ * layer covers the calendar and a tap on it cancels, as a modal sheet would.
+ */
 function TripSheet(p: FormProps & { open: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  // Another day tapped folds the sheet back to its small step; dates changed from inside the form do not.
+  useEffect(() => {
+    setExpanded(false);
+  }, [p.anchorKey]);
   const drag = useDragDown(p.onClear);
   const worth = worthOf(p.tapped, p.yearInView);
   const block = p.tapped?.best;
   const onBlock = !!block && p.draft.from === block.start && p.draft.to === block.end;
+  // The focus call must follow the tap at once for the phone's keyboard to come up, hence flushSync.
+  const expand = () => {
+    flushSync(() => setExpanded(true));
+    p.inputRef.current?.focus();
+  };
+  const dim = p.open && expanded;
   return (
-    <Sheet
-      open={p.open}
-      onOpenChange={(o) => {
-        if (!o) p.onClear();
-      }}
-    >
-      <SheetContent
-        side="bottom"
-        showCloseButton={false}
-        style={drag.style}
-        onOpenAutoFocus={(e) => {
-          e.preventDefault();
-          p.inputRef.current?.focus();
+    <>
+      {dim &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-40 bg-black/10 supports-backdrop-filter:backdrop-blur-xs animate-in fade-in-0 duration-100"
+            aria-hidden="true"
+            onClick={p.onClear}
+          />,
+          document.body,
+        )}
+      <Sheet
+        open={p.open}
+        modal={false}
+        onOpenChange={(o) => {
+          if (!o) p.onClear();
         }}
-        className="gap-0 rounded-t-2xl border-t p-0 pb-[max(1rem,env(safe-area-inset-bottom))]"
       >
-        <div className="[touch-action:none] select-none" {...drag.handlers}>
-          <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-muted-foreground/30" aria-hidden="true" />
-          <SheetHeader className="px-4 pt-3 pb-1">
-            <SheetTitle>New trip</SheetTitle>
-            <SheetDescription>{worth || 'Stretch the dates in the picker, give it a name and add it.'}</SheetDescription>
-          </SheetHeader>
-        </div>
-        <div className="flex flex-col gap-3 px-4 pt-2">
-          {worth && block && !onBlock && (
-            <Button type="button" variant="secondary" size="lg" onClick={() => p.onRangeChange(block.start, block.end)}>
-              <SparklesIcon />
-              Use this break · {block.off} days off for {block.leave === 1 ? '1 day' : `${block.leave} days`}
-            </Button>
-          )}
-          <TripForm {...p} />
-        </div>
-      </SheetContent>
-    </Sheet>
+        <SheetContent
+          side="bottom"
+          showCloseButton={false}
+          style={drag.style}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          className="gap-0 rounded-t-2xl border-t p-0 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-12px_40px_rgba(0,0,0,0.14)]"
+        >
+          <div className="[touch-action:none] select-none" {...drag.handlers}>
+            <div className="mx-auto mt-2 h-1 w-9 rounded-full bg-muted-foreground/30" aria-hidden="true" />
+            <SheetHeader className="flex-row items-start gap-3 px-4 pt-3 pb-1">
+              <div className="min-w-0 flex-1 leading-tight">
+                <SheetTitle className="text-base">{expanded ? 'New trip' : p.rangeText}</SheetTitle>
+                <SheetDescription className="mt-0.5 text-xs">{expanded ? worth || 'Stretch the dates in the picker, give it a name and add it.' : kindOf(p.tapped)}</SheetDescription>
+              </div>
+              <Button type="button" variant="secondary" size="icon-sm" className="-mt-0.5 -mr-1 rounded-full" aria-label="Close" onClick={p.onClear}>
+                <XIcon />
+              </Button>
+            </SheetHeader>
+          </div>
+          <div className="flex flex-col gap-3 px-4 pt-2">
+            {!expanded ? (
+              <>
+                {worth && <p className="text-sm text-muted-foreground">{worth}</p>}
+                <Button type="button" size="lg" onClick={expand}>
+                  <CalendarPlusIcon />
+                  Start a break here
+                </Button>
+              </>
+            ) : (
+              <>
+                {worth && block && !onBlock && (
+                  <Button type="button" variant="secondary" size="lg" onClick={() => p.onRangeChange(block.start, block.end)}>
+                    <SparklesIcon />
+                    Use this break · {block.off} days off for {block.leave === 1 ? '1 day' : `${block.leave} days`}
+                  </Button>
+                )}
+                <TripForm {...p} />
+              </>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }

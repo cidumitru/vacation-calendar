@@ -118,12 +118,12 @@ export function App() {
   // ---- Draft and trips.
   const setName = (name: string) => setDraft((d) => ({ ...d, name }));
 
-  /** Dates picked in the popover's own picker: the popover moves to the last day, and the calendar goes there if that year is not on screen. */
+  /** Dates picked in the form's own picker: on desktop the popover moves to the last day (on phones the sheet stays on the day tapped), and the calendar goes there if that year is not on screen. */
   const setRange = (from: string, to: string) => {
     setDraft((d) => ({ ...d, from, to }));
     setErr('');
     const k = to || from;
-    setAnchorKey(k);
+    if (!isMobileRef.current) setAnchorKey(k);
     if (k) {
       const y = yearOf(k);
       if (y < yFrom || y > yTo) jumpTo(y, false, Number(k.slice(5, 7)) - 1);
