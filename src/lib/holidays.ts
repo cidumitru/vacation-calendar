@@ -51,3 +51,19 @@ export function toHolidayMap(list: Holiday[], year: number): HolidayMap {
 export function countHolidays(map: HolidayMap): number {
   return Object.keys(map).length;
 }
+
+/**
+ * A name for a break from the holidays inside it: the one it is built around, the two it joins, or the first and
+ * last of a longer run. Where two holidays share a date only the first is used.
+ */
+export function breakName(holidays: string[]): string {
+  const names: string[] = [];
+  for (const h of holidays) {
+    const n = h.split(' · ')[0];
+    if (!names.includes(n)) names.push(n);
+  }
+  if (names.length === 0) return 'Break';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} & ${names[1]}`;
+  return `${names[0]} – ${names[names.length - 1]}`;
+}

@@ -1,25 +1,27 @@
 import { CalendarIcon } from 'lucide-react';
-import type { DateRange } from 'react-day-picker';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useIsMobile } from '@/hooks/use-mobile';
-import { iso } from '@/lib/dates';
+import { fmt, iso } from '@/lib/dates';
 import type { WeekStart } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 interface Props {
   id?: string;
-  from: string; // 'YYYY-MM-DD' or ''
-  to: string;
-  /** What the trigger shows: the picked dates, or a prompt when nothing is picked. */
-  text: string;
-  /** The month the picker opens on when nothing is picked: January of the year in view. */
+  /** What the field is, read out with its value: "Last day". */
+  label: string;
+  /** 'YYYY-MM-DD' or '' for nothing picked yet. */
+  value: string;
+  /** Shown while nothing is picked. */
+  placeholder: string;
+  /** Where the picker opens when nothing is picked: the month of this day, or January of the year in view. */
+  near: string;
   yearInView: number;
   minYear: number;
   maxYear: number;
   weekStart: WeekStart;
-  onChange: (from: string, to: string) => void;
+  onChange: (key: string) => void;
 }
 
 // The app keeps dates as 'YYYY-MM-DD' keys; the picker works in local Date objects.
@@ -27,28 +29,32 @@ const toDate = (key: string): Date | undefined =>
   key ? new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, Number(key.slice(8, 10))) : undefined;
 const toKey = (d: Date): string => iso(d.getFullYear(), d.getMonth(), d.getDate());
 
-export function DateRangePicker({ id, from, to, text, yearInView, minYear, maxYear, weekStart, onChange }: Props) {
-  const isMobile = useIsMobile();
-  const selected: DateRange | undefined = from ? { from: toDate(from), to: toDate(to || from) } : undefined;
+/** One day as a button that opens a month picker; picking a day closes it. */
+export function DatePicker({ id, label, value, placeholder, near, yearInView, minYear, maxYear, weekStart, onChange }: Props) {
+  const [open, setOpen] = useState(false);
+  const text = value ? fmt(value, yearInView) : placeholder;
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button id={id} variant="outline" className={cn('w-full justify-start font-normal', !from && 'text-muted-foreground')}>
+        <Button id={id} variant="outline" aria-label={`${label}: ${text}`} className={cn('w-full justify-start px-2.5 font-normal', !value && 'text-muted-foreground')}>
           <CalendarIcon className="text-muted-foreground" />
           <span className="truncate">{text}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0" align="start">
         <Calendar
-          mode="range"
-          selected={selected}
-          defaultMonth={selected?.from ?? new Date(yearInView, 0, 1)}
-          numberOfMonths={isMobile ? 1 : 2}
+          mode="single"
+          selected={toDate(value)}
+          defaultMonth={toDate(value) ?? toDate(near) ?? new Date(yearInView, 0, 1)}
           weekStartsOn={weekStart === 'Sunday' ? 0 : 1}
           captionLayout="dropdown"
           startMonth={new Date(minYear, 0)}
           endMonth={new Date(maxYear, 11)}
-          onSelect={(range) => onChange(range?.from ? toKey(range.from) : '', range?.to ? toKey(range.to) : '')}
+          onSelect={(d) => {
+            if (!d) return;
+            onChange(toKey(d));
+            setOpen(false);
+          }}
         />
       </PopoverContent>
     </Popover>

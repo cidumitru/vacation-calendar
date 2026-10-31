@@ -10,7 +10,7 @@ import { TripPopover } from '@/components/trip-popover';
 import { YearCalendar } from '@/components/year-calendar';
 import { isMobileViewport, useIsMobile } from '@/hooks/use-mobile';
 import { useYearScroller } from '@/hooks/use-year-scroller';
-import { buildContext, buildYear, count, draftRange, ownMap, type YearModel } from '@/lib/calendar';
+import { buildContext, buildYear, count, draftRange, ownMap, type DayCell, type YearModel } from '@/lib/calendar';
 import { daysBetween, eachDay, fmt, iso, yearOf } from '@/lib/dates';
 import { countHolidays, toHolidayMap, type HolidayLookup, type HolidayMap } from '@/lib/holidays';
 import { holidayStore } from '@/lib/holidayStore';
@@ -41,6 +41,8 @@ export function App() {
   const [err, setErr] = useState('');
   // On phones the months stack in one column, so "today" is the current month there; on wider screens it is the year.
   const isMobile = useIsMobile();
+  const isMobileRef = useRef(isMobile);
+  isMobileRef.current = isMobile;
   const [startMonth] = useState(() => (isMobileViewport() ? THIS_MONTH : null));
   const scroller = useYearScroller(THIS_YEAR, MIN_YEAR, MAX_YEAR, startMonth);
   const { year, month, yFrom, yTo, jumpTo } = scroller;
@@ -116,12 +118,12 @@ export function App() {
   // ---- Draft and trips.
   const setName = (name: string) => setDraft((d) => ({ ...d, name }));
 
-  /** Dates picked in the popover's own picker: the popover moves to the last day, and the calendar goes there if that year is not on screen. */
+  /** Dates picked in the form's own picker: on desktop the popover moves to the last day (on phones the sheet stays on the day tapped), and the calendar goes there if that year is not on screen. */
   const setRange = (from: string, to: string) => {
     setDraft((d) => ({ ...d, from, to }));
     setErr('');
     const k = to || from;
-    setAnchorKey(k);
+    if (!isMobileRef.current) setAnchorKey(k);
     if (k) {
       const y = yearOf(k);
       if (y < yFrom || y > yTo) jumpTo(y, false, Number(k.slice(5, 7)) - 1);
@@ -137,12 +139,19 @@ export function App() {
   const tapDay = useCallback((key: string) => {
     setErr('');
     setAnchorKey(key);
+    // On phones there is no second click: the sheet opens with the day as the first day, and the last day is picked in it.
+    if (isMobileRef.current) {
+      setDraft((d) => ({ ...d, from: key, to: '' }));
+      return;
+    }
     setDraft((d) => {
       if (!d.from || d.to) return { ...d, from: key, to: '' };
       if (key < d.from) return { ...d, from: key, to: d.from };
       return { ...d, to: key };
     });
   }, []);
+  /** The day the form sits on, for the line that says what a day of leave there is worth. */
+  const tapped: DayCell | null = anchorKey ? (yearModel(yearOf(anchorKey)).months[Number(anchorKey.slice(5, 7)) - 1].cells.find((c) => c?.key === anchorKey) ?? null) : null;
 
   const addTrip = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -173,6 +182,18 @@ export function App() {
     const ty = yearOf(a);
     if (ty !== year) jumpTo(ty, true);
   };
+
+  /** The names of the public holidays from a to b, each once. */
+  const holidayNamesIn = (a: string, b: string): string[] => {
+    const names: string[] = [];
+    if (settings.holidays) {
+      eachDay(a, b, (k) => {
+        for (const n of (lookup(yearOf(k))[k] || '').split(' · ')) if (n && !names.includes(n)) names.push(n);
+      });
+    }
+    return names;
+  };
+
 
   /** Adds suggested breaks as trips, each over its whole break so that it shows as one band; a break that now clashes is skipped. */
   const addBreaks = (breaks: NewBreak[]) => {
@@ -233,12 +254,7 @@ export function App() {
   let summary = '';
   if (pa) {
     const c = count(pa, pb, settings, lookup);
-    const names: string[] = [];
-    if (settings.holidays) {
-      eachDay(pa, pb, (k) => {
-        for (const n of (lookup(yearOf(k))[k] || '').split(' · ')) if (n && !names.includes(n)) names.push(n);
-      });
-    }
+    const names = holidayNamesIn(pa, pb);
     summary = `${plural(c.all, 'day')} · ${c.off} off work`;
     if (names.length) summary += ` · includes ${names.length <= 2 ? names.join(' and ') : `${names[0]} and ${names.length - 1} more`}`;
   }
@@ -296,6 +312,7 @@ export function App() {
             anchorKey={anchorKey}
             scrollerRef={scroller.ref}
             mountedYears={`${yFrom}-${yTo}`}
+            tapped={tapped}
             rangeText={rangeText}
             summary={summary}
             error={err}
