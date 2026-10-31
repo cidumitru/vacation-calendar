@@ -1,6 +1,6 @@
 import { LightbulbIcon } from 'lucide-react';
 import { memo, type CSSProperties, type RefObject, type UIEvent } from 'react';
-import { HEAT_CLASS, HEAT_FREE_CLASS, heatLevel } from '@/components/heat-scale';
+import { HEAT_CLASS, heatLevel } from '@/components/heat-scale';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -91,11 +91,11 @@ function Month({ model, index, weekdays, view, onTapDay }: MonthProps) {
         {model.cells.map((c, i) => {
           if (!c) return <span key={`b${i}`} className="h-8" aria-hidden="true" />;
           if (!heat) return <Day key={c.key} cell={c} onTapDay={onTapDay} />;
-          // Heat bands join across the row like the calendar bands; a day no heat reaches keeps its own band's joins.
+          // Shaded working days join into one run across the row, like the calendar bands; every other day keeps its own band's joins.
           const col = i % 7;
-          const band = heated(c);
-          const joinLeft = band ? col > 0 && heated(model.cells[i - 1]) : !!JOINS[c.kind] && c.joinLeft;
-          const joinRight = band ? col < 6 && heated(model.cells[i + 1]) : !!JOINS[c.kind] && c.joinRight;
+          const hot = heated(c);
+          const joinLeft = hot ? col > 0 && heated(model.cells[i - 1]) : !!JOINS[c.kind] && c.joinLeft;
+          const joinRight = hot ? col < 6 && heated(model.cells[i + 1]) : !!JOINS[c.kind] && c.joinRight;
           return <HeatDay key={c.key} cell={c} joinLeft={joinLeft} joinRight={joinRight} onTapDay={onTapDay} />;
         })}
       </div>
@@ -182,49 +182,48 @@ function Day({ cell, onTapDay }: DayProps) {
   );
 }
 
-// ---- Heat map view: the calendar view's bands drawn as tiles. Every working day is shaded by its value (the
-// days off per day of leave of its best block) and every free day by the strongest break that covers it, so a
-// whole vacation reads as one band.
+// ---- Heat map view: the calendar view's days drawn as tiles. A working day worth taking off is shaded in one of
+// three steps by its value (the days off per day of leave of its best block); weekends and holidays keep their
+// calendar colours, so the coloured tiles are exactly the days that would cost leave.
 
-/** Bands of the calendar view that still join on their own where no heat reaches them. */
+/** Bands of the calendar view that join on their own in the heat map: trips, weekends and holidays. */
 const JOINS: Partial<Record<DayKind, true>> = { trip: true, weekend: true, holiday: true };
 
 const HOLIDAY_TILE = 'bg-destructive/10 text-destructive dark:bg-destructive/20';
 
-/** Part of a heat band: a working or free day with heat, as opposed to a trip or the draft. */
+/** A working day worth taking off: shaded, and joined to its shaded neighbours. */
 function heated(c: DayCell | null | undefined): boolean {
-  return !!c && c.kind !== 'trip' && c.kind !== 'draft' && heatLevel(c.heat) > 0;
+  return !!c && c.kind === 'plain' && heatLevel(c.value) > 0;
 }
 
 /**
- * Working days wear their step; the weekends and holidays inside a break wear its darker shade, so a band shows which
- * days cost leave. Free days and trips keep their calendar colours where no heat reaches; the range being picked is
- * outlined over whatever it covers.
+ * Working days wear their step; weekends and holidays their calendar colours; trips are solid in their colour, and
+ * the range being picked is outlined over whatever it covers.
  */
 function tileClass(c: DayCell): string {
   if (c.picked || (c.kind === 'draft' && c.end)) return 'bg-foreground font-semibold text-background';
-  const level = heatLevel(c.heat);
   switch (c.kind) {
     case 'trip':
       return 'trip-solid font-semibold';
     case 'holiday':
-      return cn(level ? HEAT_FREE_CLASS[level] : HOLIDAY_TILE, 'font-semibold');
+      return cn(HOLIDAY_TILE, 'font-semibold');
     case 'weekend':
-      return level ? HEAT_FREE_CLASS[level] : 'bg-muted text-muted-foreground';
-    case 'draft':
-      // value > 0 marks a working day; a free day under the draft keeps the darker shade.
-      return cn('inset-ring-2 inset-ring-foreground font-semibold', level ? (c.value > 0 ? HEAT_CLASS[level] : HEAT_FREE_CLASS[level]) : c.holiday ? HOLIDAY_TILE : 'bg-muted');
+      return 'bg-muted text-muted-foreground';
+    case 'draft': {
+      // value > 0 marks a working day; a free day under the draft keeps its calendar colour.
+      const level = heatLevel(c.value);
+      return cn('inset-ring-2 inset-ring-foreground font-semibold', level ? HEAT_CLASS[level] : c.holiday ? HOLIDAY_TILE : 'bg-muted');
+    }
     default:
-      return HEAT_CLASS[level];
+      return HEAT_CLASS[heatLevel(c.value)];
   }
 }
 
-/** A public holiday under a solid or heated tile keeps a dot; elsewhere its red number already says so. */
+/** A public holiday under a solid tile keeps a dot; elsewhere its red number already says so. */
 function tileDotClass(c: DayCell): string | null {
   if (!c.holiday) return null;
   if (c.picked || (c.kind === 'draft' && c.end)) return 'bg-destructive';
   if (c.kind === 'trip') return 'bg-white';
-  if (heatLevel(c.heat) > 0) return 'bg-current';
   return null;
 }
 

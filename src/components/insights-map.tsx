@@ -3,7 +3,7 @@
 
 import { CheckIcon, PlusIcon } from 'lucide-react';
 import type { CSSProperties } from 'react';
-import { HEAT_CLASS, HEAT_FREE_CLASS, heatLevel } from '@/components/heat-scale';
+import { HEAT_CLASS, heatLevel } from '@/components/heat-scale';
 import { ValueBadge, breakRange, fmtValue, leaveRange, plural, suggestionNote, type InsightsViewProps } from '@/components/insights-bits';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { DayCell, YearModel } from '@/lib/calendar';
@@ -256,12 +256,13 @@ interface MapProps {
   onJumpMonth: (month: number) => void;
 }
 
+/** A day of the map, as the calendar's heat map colours it: trips, the draft, holidays and weekends in their own colours, a working day in its step. */
 function mapCell(c: DayCell): { className: string; style?: CSSProperties } {
-  const level = heatLevel(c.heat);
   if (c.kind === 'trip') return { className: '', style: { background: c.color ?? undefined } };
   if (c.kind === 'draft') return { className: 'bg-primary' };
   if (c.holiday) return { className: 'bg-destructive' };
-  if (c.kind === 'weekend') return { className: level ? HEAT_FREE_CLASS[level] : 'bg-foreground/15' };
+  if (c.kind === 'weekend') return { className: 'bg-foreground/15' };
+  const level = heatLevel(c.value);
   return { className: level ? HEAT_CLASS[level] : 'bg-foreground/[0.07]' };
 }
 
